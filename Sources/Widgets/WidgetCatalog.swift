@@ -31,6 +31,11 @@ public enum WidgetCatalog {
     private static func c(_ pairs: [String: WidgetConfig.Value]) -> WidgetConfig { WidgetConfig(pairs) }
 
     public static let entries: [Entry] = [
+        // No config: the API key lives in the Keychain, never in the state
+        // file, and there is nothing else to choose.
+        Entry(kind: .ask, name: "Ask", category: .assistant, defaults: c([:]),
+              variants: [], supportsCompact: false, selfContained: true),
+
         Entry(kind: .clock, name: "Clock", category: .clocks, defaults: c([:]),
               variants: [], supportsCompact: true, selfContained: true),
 
@@ -181,7 +186,7 @@ public enum WidgetCatalog {
         case .system: MetricColor.cpu
         case .network: MetricColor.netUpload
         case .stock, .watchlist: PaletteColor.green.hex
-        case .aiUsage: PaletteColor.indigo.hex
+        case .aiUsage, .ask: PaletteColor.indigo.hex
         case .hydration: PaletteColor.blue.hex
         // Neutral: a clock, a battery or a player is not "about" a colour.
         case .clock, .world, .stopwatch, .timer, .progress, .countdown,
@@ -289,7 +294,8 @@ public enum WidgetCatalog {
         // Spotify while its own transport already owns the card, `progress`
         // and `hydration` are self-contained, and the business tiles are for
         // dashboards we cannot address.
-        case .music, .progress, .hydration, .aiUsage, .stripe, .paddle, .shopify:
+        // Ask opens its own panel, which is where the question is typed.
+        case .music, .progress, .hydration, .aiUsage, .stripe, .paddle, .shopify, .ask:
             nil
         }
     }
@@ -376,6 +382,7 @@ public enum WidgetCatalog {
         case .aiUsage: return CGSize(width: 192, height: 132)
         case .shortcut: return CGSize(width: 140, height: 76)
         case .airdrop: return CGSize(width: 100, height: 76)
+        case .ask: return CGSize(width: 168, height: 76)
         case .weather:
             return cfg.string("layout", default: "current") == "hourly"
                 ? CGSize(width: 216, height: 132) : CGSize(width: 148, height: 132)

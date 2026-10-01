@@ -52,6 +52,7 @@ private func symbol(for category: WidgetCategory) -> String {
     case .weather: "cloud.sun"
     case .business: "chart.line.uptrend.xyaxis"
     case .stocks: "chart.xyaxis.line"
+    case .assistant: "sparkle"
     }
 }
 

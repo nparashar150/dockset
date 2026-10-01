@@ -99,6 +99,10 @@ private func shots(since started: Date) -> [Shot] {
         // Live: this machine's own clock, zone and date.
         Shot(name: "clock", instance: widget(.clock), isPreview: false, source: .live),
 
+        // Sample: the panel's own finished answer. A live one would need an
+        // API key, and would picture whatever was last asked.
+        Shot(name: "ask", instance: widget(.ask), isPreview: true, source: .sample),
+
         // Live: the zone's own rules do this arithmetic, so the strip is the
         // real overlap between here and Tokyo at the moment of capture.
         Shot(name: "world-clock",

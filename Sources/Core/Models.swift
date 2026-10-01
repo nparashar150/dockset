@@ -144,6 +144,9 @@ public enum WidgetKind: String, Codable, Sendable, CaseIterable {
     case hydration, calendar, reminders, notes, music, battery, system
     case network, aiUsage = "ai-usage", shortcut, airdrop, weather
     case stripe, paddle, stock, watchlist, shopify
+    // Appended, so no stored raw value moves; the library's order comes from
+    // the catalog, not from here.
+    case ask
 }
 
 /// What a widget opens when its card is clicked.
@@ -169,10 +172,12 @@ public enum WidgetCategory: String, Codable, Sendable, CaseIterable {
     case weather = "Weather"
     case business = "Business"
     case stocks = "Stocks"
+    case assistant = "Assistant"
 
     /// Library sidebar order.
     public static let ordered: [WidgetCategory] = [
-        .clocks, .reminders, .calendar, .notes, .media, .system, .weather, .business, .stocks,
+        .assistant, .clocks, .reminders, .calendar, .notes, .media, .system, .weather, .business,
+        .stocks,
     ]
 }
 

@@ -58,6 +58,13 @@ struct WidgetSettingsSections: View {
                 }
             }
         }
+
+        // Its own section: Ask has no catalog options, only a key, and the
+        // key is a secret that belongs in the Keychain rather than in the
+        // widget's config with everything else.
+        if instances.contains(where: { $0.kind == .ask }) {
+            AskKeySection()
+        }
     }
 
     /// The selected widget, or the first one.
@@ -378,5 +385,53 @@ struct WidgetSettingsSections: View {
     /// there is.
     static func isFreeformList(_ key: String) -> Bool {
         choices[key] == nil
+    }
+}
+
+/// The Anthropic API key Ask uses, kept in the Keychain.
+///
+/// Never shown back once saved: the field is for entering a key, and the
+/// status line says whether one is stored.
+private struct AskKeySection: View {
+    @State private var draft = ""
+    @State private var saved = AnthropicKey.read() != nil
+
+    var body: some View {
+        Section {
+            SecureField("Anthropic API key", text: $draft, prompt: Text("sk-ant-…"))
+                .onSubmit(save)
+            LabeledContent {
+                if saved {
+                    Button("Remove", role: .destructive) {
+                        AnthropicKey.remove()
+                        refresh()
+                    }
+                } else if !draft.isEmpty {
+                    Button("Save", action: save)
+                }
+            } label: {
+                Label(saved ? "Saved in Keychain" : "Not set",
+                      systemImage: saved ? "checkmark.seal.fill" : "key")
+                    .foregroundStyle(saved ? .primary : .secondary)
+            }
+        } header: {
+            Text("Ask")
+        } footer: {
+            Link("Get a key from the Anthropic Console",
+                 destination: URL(string: "https://console.anthropic.com/settings/keys")!)
+                .font(.caption)
+        }
+    }
+
+    private func save() {
+        guard !draft.isEmpty else { return }
+        AnthropicKey.save(draft)
+        draft = ""
+        refresh()
+    }
+
+    private func refresh() {
+        saved = AnthropicKey.read() != nil
+        AskService.shared.refreshKey()
     }
 }

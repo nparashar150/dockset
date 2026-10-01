@@ -543,10 +543,10 @@ final class WidgetConfigurationTests: XCTestCase {
 
     /// Adding a widget to the catalog without thinking about its click is the
     /// mistake this catches. An entry may report no destination only when it
-    /// has somewhere else to send the click: `.music` opens a detail panel,
-    /// and the other two are self-contained readouts.
+    /// has somewhere else to send the click: `.music` and `.ask` open a detail
+    /// panel, and the other two are self-contained readouts.
     func testEveryOtherCatalogEntryHasADestination() {
-        let selfDriven: Set<WidgetKind> = [.music, .progress, .hydration]
+        let selfDriven: Set<WidgetKind> = [.music, .ask, .progress, .hydration]
         for entry in WidgetCatalog.entries where !selfDriven.contains(entry.kind) {
             XCTAssertNotNil(WidgetCatalog.openTarget(entry.kind),
                             "\(entry.kind) is in the library but opens nothing")

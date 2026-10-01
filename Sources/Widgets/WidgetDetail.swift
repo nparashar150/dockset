@@ -364,6 +364,8 @@ enum WidgetDetail {
 
     static func width(_ kind: WidgetKind) -> CGFloat {
         switch kind {
+        // Wide enough for a table or a line of code without wrapping it.
+        case .ask: 360
         case .stripe, .paddle, .shopify: 340
         case .calendar, .reminders: 320
         // Set by the twelve-column strip of the next hours there.
