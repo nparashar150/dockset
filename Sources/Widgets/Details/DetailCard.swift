@@ -274,3 +274,97 @@ struct WeatherBackdrop: View {
         return [Color(red: 0.22, green: 0.27, blue: 0.36), Color(red: 0.32, green: 0.38, blue: 0.47)]
     }
 }
+
+// MARK: - Ticks
+
+/// A level as a row of fine vertical ticks lit up to it.
+///
+/// What replaced the rings. A ring is the stock dashboard gauge, and two or
+/// three side by side read as any monitoring app; a filled bar is the same
+/// thing flattened. Ticks read as an instrument: precise, quiet, and of a
+/// piece with the dithered stock chart, so the panels share one hand.
+struct TickMeter: View {
+    var fraction: Double
+    var height: CGFloat = 12
+
+    var body: some View {
+        GeometryReader { geo in
+            let count = max(1, Int((geo.size.width + 3) / 6))
+            let lit = Int((min(max(fraction, 0), 1) * Double(count)).rounded())
+            HStack(spacing: 3) {
+                ForEach(0..<count, id: \.self) { index in
+                    Capsule()
+                        .fill(.white.opacity(index < lit ? 0.88 : 0.1))
+                        .frame(width: 3)
+                }
+            }
+            .animation(.smooth(duration: 0.4), value: lit)
+        }
+        .frame(height: height)
+    }
+}
+
+/// The last minute as a row of fine bars, one per sample, older ones fading.
+///
+/// What replaced the line graphs. A line through a one-second sampler is
+/// either jagged or smoothed into something that did not happen; a bar per
+/// second is exactly what was measured, and fading the old ones makes the
+/// minute read as time going by rather than a chart to be studied.
+///
+/// `mirror` draws a second series downward from the same centre line, so two
+/// directions of one thing share a single shape.
+struct TickHistory: View {
+    var samples: [Double]
+    var mirror: [Double]? = nil
+    var range: ClosedRange<Double>
+
+    var body: some View {
+        GeometryReader { geo in
+            let slots = max(1, Int((geo.size.width + 2) / 4.5))
+            let up = Self.tail(samples, slots)
+            let down = mirror.map { Self.tail($0, slots) }
+            let half = down == nil ? geo.size.height : geo.size.height / 2
+            ZStack {
+                if down != nil {
+                    Rectangle().fill(.white.opacity(0.12)).frame(height: 0.5)
+                }
+                HStack(alignment: .center, spacing: 0) {
+                    ForEach(0..<slots, id: \.self) { index in
+                        let age = Double(index) / Double(max(slots - 1, 1))
+                        let opacity = 0.18 + 0.7 * age
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            Capsule()
+                                .fill(.white.opacity(opacity))
+                                .frame(width: 2.5, height: bar(up[index], half))
+                            if let down {
+                                Capsule()
+                                    .fill(.white.opacity(opacity * 0.55))
+                                    .frame(width: 2.5, height: bar(down[index], half))
+                                    .padding(.top, 1)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity,
+                               alignment: down == nil ? .bottom : .center)
+                    }
+                }
+            }
+        }
+    }
+
+    private func bar(_ value: Double?, _ height: CGFloat) -> CGFloat {
+        guard let value else { return 0 }
+        let span = max(range.upperBound - range.lowerBound, .ulpOfOne)
+        let fraction = min(max((value - range.lowerBound) / span, 0), 1)
+        // A floor of a dot, so an idle second is still a mark in the row.
+        return max(2, (height - 2) * CGFloat(fraction))
+    }
+
+    /// The most recent samples, right-aligned, with empty slots on the left
+    /// until the buffer fills.
+    private static func tail(_ samples: [Double], _ slots: Int) -> [Double?] {
+        let recent = Array(samples.suffix(slots))
+        return Array(repeating: nil, count: slots - recent.count) + recent.map { Optional($0) }
+    }
+}

@@ -17,19 +17,8 @@ struct SystemActivityDetail: View {
         DetailCard {
             MeshBackdrop(color: Color(red: 0.3, green: 0.24, blue: 0.5))
         } content: {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: Self.gaugeGap) {
-                    ForEach(metrics, id: \.self) { gauge($0) }
-                }
-                .frame(maxWidth: .infinity)
-
-                // The figures each ring leaves out, side by side rather
-                // than a column of rows. Two to a line, since a GiB
-                // reading needs the width.
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8),
-                                    GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                    ForEach(metrics, id: \.self) { chip($0) }
-                }
+            VStack(alignment: .leading, spacing: 16) {
+                ForEach(metrics, id: \.self) { row($0) }
 
                 // The last minute, for the metrics that move. Disk and
                 // battery keep a history that would be a flat line, so they
@@ -53,34 +42,24 @@ struct SystemActivityDetail: View {
     /// are on their way up.
     ///
     /// To the card's edges and foot, as the ground the readings stand on.
+    /// The lead metric's minute, a bar a second.
     private var history: some View {
-        ZStack(alignment: .topLeading) {
-            ZStack {
-                ForEach(charted, id: \.self) { metric in
-                    // Absolute, so a CPU idling low sits low and the lines
-                    // can honestly be read against each other.
-                    DitherChart(samples: samples(metric), tint: metric.color,
-                                filled: charted.count == 1, range: 0...1)
-                }
-            }
-            .frame(height: 54)
-            .frame(maxWidth: .infinity)
-            .padding(.top, 14)
-            Text(span.uppercased())
-                .font(.system(size: 9, weight: .semibold))
-                .tracking(0.6)
-                .foregroundStyle(.white.opacity(0.55))
-                .padding(.horizontal, 16)
+        VStack(alignment: .leading, spacing: 6) {
+            Text("\(charted[0].label), \(span)")
+                .font(WidgetStyle.caption(10))
+                .foregroundStyle(.white.opacity(0.45))
+            // Absolute, so a CPU idling low sits low.
+            TickHistory(samples: samples(charted[0]), range: 0...1)
+                .frame(height: 24)
         }
-        .padding(.horizontal, -16)
-        .padding(.bottom, -16)
+        .padding(.top, 2)
     }
 
     /// Named with the span the buffer actually holds, which is under a minute
     /// until it fills.
     private var span: String {
         let count = charted.map { samples($0).count }.max() ?? 0
-        return count >= SystemMetrics.historyLength ? "Last 60 seconds" : "Last \(count) seconds"
+        return count >= SystemMetrics.historyLength ? "last minute" : "last \(count)s"
     }
 
     private func samples(_ metric: Metric) -> [Double] {
@@ -88,46 +67,30 @@ struct SystemActivityDetail: View {
         return SystemMetrics.shared.history(for: metric.rawValue)
     }
 
-    // MARK: Gauges
+    // MARK: Readings
 
-    private static let gaugeGap: CGFloat = 12
-
-    /// Small enough to be a reading rather than a poster.
-    ///
-    /// These were sized to fill the panel's width - 93pt across for three
-    /// metrics - which put a 24pt figure inside each and left the gauges
-    /// occupying most of the panel while saying one number each. A gauge is
-    /// worth its space at the size the eye can take in at a glance; the width
-    /// it gives back is what lets the figures and the graph below it fit.
-    ///
-    /// Larger on the card than it was on the form, now that the rows under
-    /// it have become chips and given the height back.
-    private var diameter: CGFloat {
-        let content = WidgetDetail.width(instance.kind) - 32
-        let count = CGFloat(metrics.count)
-        return min(72, (content - Self.gaugeGap * (count - 1)) / count)
-    }
-
-    private func gauge(_ metric: Metric) -> some View {
-        VStack(spacing: 6) {
-            MetricProgressRing(progress: value(metric),
-                               tint: metric.color,
-                               // Neutral, not a dim copy of the arc's own
-                               // colour: tinting both made the unfilled part
-                               // read as a second, muddier reading.
-                               track: .white.opacity(0.12),
-                               diameter: diameter,
-                               lineWidth: diameter * 0.11) {
-                percent(value(metric), size: diameter * 0.30)
+    /// A metric as a row: its name and the fact the percentage leaves out on
+    /// the left, the percentage on the right, and its level as ticks under
+    /// both.
+    private func row(_ metric: Metric) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .lastTextBaseline) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(metric.label)
+                        .font(WidgetStyle.label(13))
+                        .foregroundStyle(WidgetStyle.primary)
+                    Text(detail(metric).value)
+                        .font(WidgetStyle.caption(11))
+                        .foregroundStyle(WidgetStyle.secondary)
+                        .monospacedDigit()
+                }
+                Spacer(minLength: 8)
+                percent(value(metric), size: 30)
             }
-            // The tile's ring carries a symbol because a 42pt card has nowhere
-            // to put a caption. At this size the reading goes back inside and
-            // the name underneath, with the arc's colour tying the two.
-            Text(metric.label)
-                .font(WidgetStyle.caption(11))
-                .foregroundStyle(WidgetStyle.secondary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            TickMeter(fraction: value(metric))
         }
-        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(metric.label)
         .accessibilityValue("\(whole(value(metric))) percent")
@@ -138,24 +101,19 @@ struct SystemActivityDetail: View {
         let reading = whole(value)
         HStack(spacing: 0) {
             Text("\(reading)")
-                .font(.system(size: size, weight: .bold))
+                .font(.system(size: size, weight: .light))
                 .monospacedDigit()
                 .foregroundStyle(WidgetStyle.primary)
                 .rollingValue(reading)
             // Smaller than the figure, so a three-digit reading still clears
             // the arc it sits inside.
             Text("%")
-                .font(.system(size: size * 0.62, weight: .bold))
+                .font(.system(size: size * 0.5, weight: .light))
                 .foregroundStyle(WidgetStyle.secondary)
         }
     }
 
     // MARK: Detail
-
-    private func chip(_ metric: Metric) -> some View {
-        let line = detail(metric)
-        return StatChip(label: line.label, value: line.value)
-    }
 
     /// The one fact each gauge leaves out.
     ///
@@ -174,12 +132,12 @@ struct SystemActivityDetail: View {
             let series = context.isPreview ? [] : SystemMetrics.shared.cpuHistory
             guard !series.isEmpty else { return ("Average CPU", "-") }
             let average = series.reduce(0, +) / Double(series.count)
-            return ("Average CPU", "\(whole(average))%")
+            return ("Average CPU", "avg \(whole(average))%")
         case .memory:
             let total = Double(ProcessInfo.processInfo.physicalMemory)
             let gib = 1024.0 * 1024 * 1024
             return ("Memory used",
-                    String(format: "%.1f / %.0f GiB", value(metric) * total / gib, total / gib))
+                    String(format: "%.1f of %.0f GB", value(metric) * total / gib, total / gib))
         case .disk:
             // The percentage is the ring's job. This is the figure you
             // actually act on, off the same sample.
@@ -188,7 +146,7 @@ struct SystemActivityDetail: View {
             guard !context.isPreview, total > 0 else { return ("Startup volume", "-") }
             let gib = 1024.0 * 1024 * 1024
             return ("Startup volume free",
-                    String(format: "%.0f / %.0f GiB", free / gib, total / gib))
+                    String(format: "%.0f GB free", free / gib))
         case .battery:
             let mac = context.isPreview ? nil : BatteryMetrics.shared.device(.mac)
             guard let mac, mac.present else { return ("Mac battery", "Not reported") }
@@ -235,15 +193,6 @@ struct SystemActivityDetail: View {
             case .memory: "Memory"
             case .disk: "Disk"
             case .battery: "Battery"
-            }
-        }
-
-        var color: Color {
-            switch self {
-            case .cpu: Color(hex: MetricColor.cpu)
-            case .memory: Color(hex: MetricColor.memory)
-            case .disk: Color(hex: MetricColor.storage)
-            case .battery: Color(hex: MetricColor.batteryPresent)
             }
         }
 

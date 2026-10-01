@@ -24,17 +24,14 @@ struct NetworkDetail: View {
         DetailCard {
             MeshBackdrop(color: Color(red: 0.05, green: 0.45, blue: 0.5))
         } content: {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 18) {
                 headline
 
                 // Two samples is the minimum a line can be drawn from, and
                 // the sampler's first tick is only a baseline - so a panel
                 // opened in the first seconds of the shelf's life honestly
                 // shows the rates alone until the history catches up.
-                if window >= 2 {
-                    table
-                    history
-                }
+                if window >= 2 { history }
             }
         }
     }
@@ -43,20 +40,26 @@ struct NetworkDetail: View {
 
     private var headline: some View {
         HStack(spacing: 12) {
-            if showsDownload { reading("arrow.down", "Download", download, Self.downTint) }
-            if showsUpload { reading("arrow.up", "Upload", upload, Self.upTint) }
+            if showsDownload { reading("arrow.down", "Down", download, downloadHistory) }
+            if showsUpload { reading("arrow.up", "Up", upload, uploadHistory) }
         }
     }
 
-    private func reading(_ symbol: String, _ name: String, _ rate: Double, _ tint: Color) -> some View {
+    /// A rate in light figures, with the minute's average and peak as one
+    /// quiet line under it.
+    ///
+    /// The average and peak were four boxed chips with capitalised labels,
+    /// a dashboard where the figures above wanted room. Said once, softly,
+    /// under the number they qualify, they read as part of it.
+    private func reading(_ symbol: String, _ name: String, _ rate: Double, _ series: [Double]) -> some View {
         let value = formatted(rate)
-        return VStack(alignment: .leading, spacing: 1) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
+        return VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
                 Image(systemName: symbol)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(tint)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(WidgetStyle.secondary)
                 Text(value.value)
-                    .font(WidgetStyle.value(34))
+                    .font(.system(size: 40, weight: .light))
                     .monospacedDigit()
                     .foregroundStyle(WidgetStyle.primary)
                     .rollingValue(value.value)
@@ -64,9 +67,7 @@ struct NetworkDetail: View {
                     .font(WidgetStyle.caption(12))
                     .foregroundStyle(WidgetStyle.secondary)
             }
-            // The tile has room for an arrow and nothing else; at this width
-            // the direction can be said in words.
-            Text(name)
+            Text(window >= 2 ? "\(name), avg \(text(average(series))) · peak \(text(peak(series)))" : name)
                 .font(WidgetStyle.caption(11))
                 .foregroundStyle(WidgetStyle.secondary)
         }
@@ -91,58 +92,26 @@ struct NetworkDetail: View {
     /// Floored at 1 KB/s so an idle minute stays pinned to the bottom of the
     /// frame: without a floor the scale collapses onto the noise and a few
     /// stray bytes are drawn as a mountain range.
+    /// The minute as one mirrored row of bars: download rising from a centre
+    /// line, upload falling from it, a bar a second.
+    ///
+    /// Two lines on one chart were two shapes to compare; one mirrored shape
+    /// is the traffic itself, with its direction as up and down.
     private var history: some View {
-        ZStack(alignment: .topLeading) {
-            ZStack {
-                if showsDownload {
-                    DitherChart(samples: downloadHistory, tint: Self.downTint,
-                                filled: false, range: scale)
-                }
-                if showsUpload {
-                    DitherChart(samples: uploadHistory, tint: Self.upTint,
-                                filled: false, range: scale)
-                }
-            }
-            .frame(height: 58)
-            .frame(maxWidth: .infinity)
-            .padding(.top, 14)
-            // Named with the span the buffer actually holds, which is under a
-            // minute until it fills.
-            Text((window >= NetworkMetrics.historyLength ? "Last 60 seconds" : "Last \(window) seconds")
-                    .uppercased())
-                .font(.system(size: 9, weight: .semibold))
-                .tracking(0.6)
-                .foregroundStyle(.white.opacity(0.55))
-                .padding(.horizontal, 16)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(window >= NetworkMetrics.historyLength ? "Last minute" : "Last \(window)s")
+                .font(WidgetStyle.caption(10))
+                .foregroundStyle(.white.opacity(0.45))
+            TickHistory(samples: showsDownload ? downloadHistory : uploadHistory,
+                        mirror: showsDownload && showsUpload ? uploadHistory : nil,
+                        range: scale)
+                .frame(height: 64)
         }
-        // To the card's edges and foot.
-        .padding(.horizontal, -16)
-        .padding(.bottom, -16)
     }
 
     private var scale: ClosedRange<Double> {
         let peaks = [showsDownload ? peak(downloadHistory) : 0, showsUpload ? peak(uploadHistory) : 0]
         return 0...max(peaks.max() ?? 0, 1024)
-    }
-
-    // MARK: Table
-
-    /// What the chart's shape cannot be read off it: the level the lines are
-    /// drawn against. The peak names the top of the frame, and the average
-    /// says whether a spike was the whole minute or a moment in it. Chips,
-    /// two to a direction, in place of a table with a header row.
-    private var table: some View {
-        LazyVGrid(columns: [GridItem(.flexible(), spacing: 8),
-                            GridItem(.flexible(), spacing: 8)], spacing: 8) {
-            if showsDownload {
-                StatChip(label: "Down average", value: text(average(downloadHistory)))
-                StatChip(label: "Down peak", value: text(peak(downloadHistory)))
-            }
-            if showsUpload {
-                StatChip(label: "Up average", value: text(average(uploadHistory)))
-                StatChip(label: "Up peak", value: text(peak(uploadHistory)))
-            }
-        }
     }
 
     private func text(_ rate: Double) -> String {
@@ -160,9 +129,6 @@ struct NetworkDetail: View {
     //
     // The tile's keys, key for key: a widget set to watch one direction must
     // not have the panel quietly report both.
-
-    private static let downTint = Color(hex: MetricColor.netDownload)
-    private static let upTint = Color(hex: MetricColor.netUpload)
 
     private var display: String { instance.config.string("display", default: "both") }
     private var showsDownload: Bool { display != "upload" }
