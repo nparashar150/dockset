@@ -429,7 +429,7 @@ struct SettingsView: View {
             .padding(.vertical, 2)
 
             Picker("Display", selection: $state.customDock.displayID) {
-                Text("Wherever the pointer is").tag(UInt32?.none)
+                Text("Main display").tag(UInt32?.none)
                 ForEach(NSScreen.screens, id: \.self) { screen in
                     if let id = screen.docketDisplayID {
                         Text(screen.localizedName).tag(UInt32?.some(id))
