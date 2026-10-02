@@ -274,6 +274,18 @@ final class DockPanelController: NSObject, NSWindowDelegate {
     private func hiddenOrigin(for size: CGSize) -> CGPoint {
         let frame = targetScreen.frame
         let shown = revealedOrigin(for: size)
+        // With another display past the edge there is no "off screen" to
+        // park in: the shelf would sit on the neighbouring display, and slide
+        // across the seam to come back. It stays on its own screen instead,
+        // a short way toward the edge, and fades; see `edgeIsShared`.
+        if edgeIsShared {
+            let nudge: CGFloat = 14
+            return switch app.effectivePosition {
+            case .bottom: CGPoint(x: shown.x, y: shown.y - nudge)
+            case .left: CGPoint(x: shown.x - nudge, y: shown.y)
+            case .right: CGPoint(x: shown.x + nudge, y: shown.y)
+            }
+        }
         let peek = handlePeek
         return switch app.effectivePosition {
         case .bottom: CGPoint(x: shown.x, y: frame.minY - size.height + peek)
@@ -281,6 +293,32 @@ final class DockPanelController: NSObject, NSWindowDelegate {
         case .right: CGPoint(x: frame.maxX - peek, y: shown.y)
         }
     }
+
+    /// Whether another display continues past the shelf's edge.
+    ///
+    /// A MacBook below an external monitor shares the monitor's bottom edge,
+    /// and hiding by moving off that edge parked the shelf on the top of the
+    /// laptop's screen, from where every reveal slid it up across the seam.
+    /// Measured against every other screen's frame, with a point of slack for
+    /// arrangements that do not quite meet, and only where the two overlap
+    /// along the edge: a display that merely touches a corner does not count.
+    private var edgeIsShared: Bool {
+        let screen = targetScreen
+        let frame = screen.frame
+        return NSScreen.screens.contains { other in
+            guard other != screen else { return false }
+            let o = other.frame
+            switch app.effectivePosition {
+            case .bottom: return abs(o.maxY - frame.minY) < 2 && o.maxX > frame.minX && o.minX < frame.maxX
+            case .left: return abs(o.maxX - frame.minX) < 2 && o.maxY > frame.minY && o.minY < frame.maxY
+            case .right: return abs(o.minX - frame.maxX) < 2 && o.maxY > frame.minY && o.minY < frame.maxY
+            }
+        }
+    }
+
+    /// How opaque the shelf should be: hidden against a shared edge means
+    /// faded, everywhere else it is moved out of sight and stays opaque.
+    private var targetAlpha: CGFloat { (!revealed && edgeIsShared) ? 0 : 1 }
 
     /// How much of the shelf stays on screen while hidden.
     ///
@@ -333,6 +371,19 @@ final class DockPanelController: NSObject, NSWindowDelegate {
     private func applyPlacement(animated: Bool, motion: Motion = .pointer) {
         guard let panel, panel.frame.width > 1, panel.frame.height > 1 else { return }
         let origin = revealed ? revealedOrigin : hiddenOrigin
+        // Faded out, it must not take the clicks meant for whatever is behind.
+        let alpha = targetAlpha
+        panel.ignoresMouseEvents = alpha == 0
+        if panel.alphaValue != alpha {
+            if animated {
+                NSAnimationContext.runAnimationGroup { context in
+                    context.duration = motion.duration
+                    panel.animator().alphaValue = alpha
+                }
+            } else {
+                panel.alphaValue = alpha
+            }
+        }
         guard panel.frame.origin != origin else { return }
         if animated {
             // NSWindow's animator proxy only animates `setFrame(_:display:)`.
@@ -608,14 +659,20 @@ final class DockPanelController: NSObject, NSWindowDelegate {
     private var revealZone: CGRect {
         let frame = targetScreen.frame
         let shelf = shelfFrame
+        // A shared edge is not a wall the pointer stops against: it carries
+        // straight on to the next display, and a 3pt strip on this side is
+        // crossed between two samples. So the band reaches a little past the
+        // seam as well, where the pointer is when it has just gone over.
+        let past: CGFloat = edgeIsShared ? 6 : 0
+        let depth = revealZoneDepth + past
         return switch app.effectivePosition {
         case .bottom:
-            CGRect(x: shelf.minX, y: frame.minY, width: shelf.width, height: revealZoneDepth)
+            CGRect(x: shelf.minX, y: frame.minY - past, width: shelf.width, height: depth)
         case .left:
-            CGRect(x: frame.minX, y: shelf.minY, width: revealZoneDepth, height: shelf.height)
+            CGRect(x: frame.minX - past, y: shelf.minY, width: depth, height: shelf.height)
         case .right:
             CGRect(x: frame.maxX - revealZoneDepth, y: shelf.minY,
-                   width: revealZoneDepth, height: shelf.height)
+                   width: depth, height: shelf.height)
         }
     }
 
@@ -658,6 +715,12 @@ final class DockPanelController: NSObject, NSWindowDelegate {
             let hidden = hiddenOrigin, shown = revealedOrigin
             panel.setFrameOrigin(CGPoint(x: hidden.x + (shown.x - hidden.x) * amount,
                                          y: hidden.y + (shown.y - hidden.y) * amount))
+            // Against a shared edge the reveal is a fade, so it follows the
+            // fingers in opacity as well as in place.
+            if edgeIsShared {
+                panel.alphaValue = amount
+                panel.ignoresMouseEvents = amount == 0
+            }
         case .ended(let progress, let velocity):
             swipe = nil
             swipeEndedAt = Date()
