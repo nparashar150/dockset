@@ -138,13 +138,14 @@ struct BatteryTile: View {
                 let reading = reading(kind)
                 let single = devices.count == 1
                 VStack(spacing: 3) {
+                    // White, as on the wide card, and coloured only once the
+                    // level is low enough to earn it: a green ring per device
+                    // turned a side column into a traffic light.
                     MetricProgressRing(progress: reading.present ? reading.level : 0,
-                                       tint: present,
-                                       track: reading.present
-                                           ? present.opacity(0.18)
-                                           : Color.primary.opacity(0.10),
+                                       tint: ringTint(reading).opacity(0.85),
+                                       track: WidgetStyle.primary.opacity(0.1),
                                        diameter: single ? 42 : 34,
-                                       lineWidth: single ? 5 : 4) {
+                                       lineWidth: 3) {
                         percent(reading, size: single ? 14 : 11)
                     }
                     .overlay(alignment: .bottomTrailing) {
@@ -164,7 +165,7 @@ struct BatteryTile: View {
     private var bolt: some View {
         Image(systemName: "bolt.fill")
             .font(.system(size: 8, weight: .bold))
-            .foregroundStyle(present)
+            .foregroundStyle(WidgetStyle.primary)
             .padding(3)
             .background(Circle().fill(.background))
     }

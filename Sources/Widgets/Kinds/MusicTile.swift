@@ -25,8 +25,12 @@ struct MusicTile: View {
     private var browsersEnabled: Bool { config.bool("browsers", default: true) }
 
     /// The artwork, when there is one to stand on.
+    ///
+    /// Never in a side column, where the artwork is the thumbnail at the top:
+    /// 76pt is too narrow to put a title over a picture and keep either
+    /// readable, so a cover behind it only buried both.
     private var cover: NSImage? {
-        guard !context.isPreview else { return nil }
+        guard !context.isPreview, !context.position.isVertical else { return nil }
         return playing?.artwork
     }
 
@@ -248,8 +252,8 @@ struct MusicTile: View {
         VStack(spacing: 3) {
             Artwork(image: track.artwork, fallback: sourceIcon(track), side: 32, corner: 7)
             VStack(spacing: 0) {
-                title(track, size: 10)
-                artist(track, size: 9)
+                title(track, size: 11)
+                artist(track, size: 10)
             }
             transport(track, size: 11, spacing: 6)
         }
@@ -274,6 +278,9 @@ struct MusicTile: View {
             .font(WidgetStyle.caption(size))
             .foregroundStyle(subInk)
             .lineLimit(1)
+            // A little shrink before the cut, so a short name such as
+            // "Sample artist" fits a side column whole.
+            .minimumScaleFactor(0.8)
             .truncationMode(.tail)
     }
 

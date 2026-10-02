@@ -85,13 +85,17 @@ struct WatchlistTile: View {
                             .font(WidgetStyle.label(9))
                             .foregroundStyle(WidgetStyle.secondary)
                         Spacer(minLength: 0)
-                        Text(quote?.percentText ?? "")
-                            .font(WidgetStyle.label(9))
-                            .foregroundStyle(accent(quote))
-                            .monospacedDigit()
+                        // An arrow, not the percentage: "+0.2..." was all a
+                        // 76pt column had room for, and the direction is the
+                        // part that can be read at a glance.
+                        if let quote {
+                            Image(systemName: quote.rising ? "arrow.up.right" : "arrow.down.right")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(accent(quote))
+                        }
                     }
                     Text(quote?.priceText ?? "-")
-                        .font(WidgetStyle.value(13))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(WidgetStyle.primary)
                         .monospacedDigit()
                 }

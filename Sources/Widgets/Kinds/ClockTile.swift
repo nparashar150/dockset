@@ -69,7 +69,11 @@ struct ClockReadout: View {
     private var column: some View {
         let parts = ClockFormat.compactTime(now, zone: zone)
         return VStack(spacing: 2) {
-            AnalogClockFace(now: now, zone: zone)
+            // In the badge square, as on the wide card, so the side column
+            // leads with the same mark in the same frame.
+            TileBadge(size: 32) {
+                AnalogClockFace(now: now, zone: zone, diameter: 22)
+            }
             HStack(alignment: .firstTextBaseline, spacing: 1.5) {
                 Text(parts.time)
                     .font(WidgetStyle.value(15))

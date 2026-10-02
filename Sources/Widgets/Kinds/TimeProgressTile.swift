@@ -141,12 +141,13 @@ struct TimeProgressTile: View {
     private var columnRing: some View {
         VStack(spacing: 5) {
             ZStack {
+                // The shelf's ring weight, as TileRing draws it.
                 Circle()
-                    .stroke(WidgetStyle.primary.opacity(0.12), lineWidth: 5)
+                    .stroke(WidgetStyle.primary.opacity(0.1), lineWidth: 3)
                 Circle()
                     .trim(from: 0, to: fraction)
-                    .stroke(WidgetStyle.primary,
-                            style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    .stroke(WidgetStyle.primary.opacity(0.85),
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .rotationEffect(.degrees(-90))
                 percentText(13)
                     .minimumScaleFactor(0.6)

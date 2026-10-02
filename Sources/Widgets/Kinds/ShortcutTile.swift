@@ -25,7 +25,10 @@ struct ShortcutTile: View {
             if column {
                 VStack(spacing: 5) {
                     glyph(running: running, name: name, size: 13)
-                    caption(name, size: 11)
+                    // Two centred lines in a column, so "Morning Routine"
+                    // reads whole instead of as "Morning Ro...".
+                    caption(name, size: 11, lines: 2)
+                        .multilineTextAlignment(.center)
                 }
             } else {
                 // The glyph is the badge here: it is both the shortcut's mark
@@ -52,11 +55,11 @@ struct ShortcutTile: View {
             .accessibilityLabel(running ? "Stop \(name)" : name.isEmpty ? "No shortcut chosen" : "Run \(name)")
     }
 
-    private func caption(_ name: String, size: CGFloat) -> some View {
+    private func caption(_ name: String, size: CGFloat, lines: Int = 1) -> some View {
         Text(name.isEmpty ? "Choose" : name)
             .font(WidgetStyle.label(size))
             .foregroundStyle(name.isEmpty ? WidgetStyle.secondary : WidgetStyle.primary)
-            .lineLimit(1)
+            .lineLimit(lines)
             .minimumScaleFactor(0.7)
     }
 

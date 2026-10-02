@@ -92,7 +92,9 @@ struct StockTile: View {
 
     private var column: some View {
         VStack(alignment: .leading, spacing: 2) {
-            readout(ticker: 9, price: 15, percent: 9, fixed: false)
+            // 13pt so a six-figure price fits the column whole; at 15 it was
+            // cut to "333...." before it could shrink far enough.
+            readout(ticker: 9, price: 13, percent: 9, fixed: false)
             if showsChart { chart.frame(maxWidth: .infinity, maxHeight: .infinity) }
         }
         .padding(.vertical, 5)

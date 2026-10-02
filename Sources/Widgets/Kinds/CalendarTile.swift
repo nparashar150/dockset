@@ -172,13 +172,17 @@ struct CalendarTile: View {
             VStack(spacing: 1) {
                 HStack(spacing: 3) {
                     dot(event.color, size: 5)
+                    // One line that shrinks: in a 76pt column "9:30 AM" wrapped
+                    // its meridiem onto a line of its own.
                     Text(event.timeText)
-                        .font(WidgetStyle.value(14))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(WidgetStyle.primary)
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
                 }
                 Text(event.title)
-                    .font(WidgetStyle.caption(9))
+                    .font(.system(size: 11))
                     .foregroundStyle(WidgetStyle.secondary)
                     .lineLimit(layout == "nextEvent" ? 2 : 1)
                     .multilineTextAlignment(.center)
@@ -186,7 +190,7 @@ struct CalendarTile: View {
             .minimumScaleFactor(0.6)
         } else {
             Text(shortStateLine)
-                .font(WidgetStyle.caption(9))
+                .font(.system(size: 11))
                 .foregroundStyle(WidgetStyle.secondary)
                 .multilineTextAlignment(.center)
                 .lineLimit(2)
