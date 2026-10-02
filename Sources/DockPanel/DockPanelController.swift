@@ -195,7 +195,23 @@ final class DockPanelController: NSObject, NSWindowDelegate {
 
     // MARK: Placement
 
+    /// The display holding Apple's Dock, from the strip it reserves.
+    ///
+    /// WindowServer reports that strip in its own space, measured down from
+    /// the top of the primary display, so it is flipped into AppKit's before
+    /// asking which screen holds its middle.
+    private var dockScreen: NSScreen? {
+        let strip = DockStrut.reserved()
+        guard strip.width > 0 || strip.height > 0, let primary = NSScreen.screens.first else { return nil }
+        let middle = CGPoint(x: strip.midX, y: primary.frame.maxY - strip.midY)
+        return NSScreen.screens.first { $0.frame.insetBy(dx: -1, dy: -1).contains(middle) }
+    }
+
     private var targetScreen: NSScreen {
+        // Covering Apple's Dock means being on the display the Dock is on,
+        // whichever one was picked: the strip it reserves is the shelf's
+        // place, and it can be on any display, primary or not.
+        if app.state.borrowedDockPrefs != nil, let dock = dockScreen { return dock }
         if let id = app.state.customDock.displayID,
            let match = NSScreen.screens.first(where: { $0.displayID == id }) {
             return match
@@ -304,17 +320,9 @@ final class DockPanelController: NSObject, NSWindowDelegate {
     /// arrangements that do not quite meet, and only where the two overlap
     /// along the edge: a display that merely touches a corner does not count.
     private var edgeIsShared: Bool {
-        let screen = targetScreen
-        let frame = screen.frame
-        return NSScreen.screens.contains { other in
-            guard other != screen else { return false }
-            let o = other.frame
-            switch app.effectivePosition {
-            case .bottom: return abs(o.maxY - frame.minY) < 2 && o.maxX > frame.minX && o.minX < frame.maxX
-            case .left: return abs(o.maxX - frame.minX) < 2 && o.maxY > frame.minY && o.minY < frame.maxY
-            case .right: return abs(o.minX - frame.maxX) < 2 && o.maxY > frame.minY && o.minY < frame.maxY
-            }
-        }
+        let screen = targetScreen.frame
+        return Geometry.sharesEdge(screen, app.effectivePosition,
+                                   with: NSScreen.screens.map(\.frame))
     }
 
     /// How opaque the shelf should be: hidden against a shared edge means

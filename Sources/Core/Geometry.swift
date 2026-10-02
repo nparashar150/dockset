@@ -150,3 +150,28 @@ public enum Geometry {
         min(max(v, range.lowerBound), range.upperBound)
     }
 }
+
+// MARK: - Displays
+
+public extension Geometry {
+    /// Whether another display continues past `screen`'s `edge`.
+    ///
+    /// Pure, over frames in AppKit's global space, so every arrangement can
+    /// be tested without the displays: a laptop below a monitor, a monitor
+    /// to either side, the primary display anywhere. A point of slack covers
+    /// arrangements that do not quite meet, and the two must overlap along
+    /// the edge; a display that only touches a corner does not count.
+    static func sharesEdge(_ screen: CGRect, _ edge: DockPosition, with others: [CGRect]) -> Bool {
+        others.contains { o in
+            guard o != screen else { return false }
+            switch edge {
+            case .bottom:
+                return abs(o.maxY - screen.minY) < 2 && o.maxX > screen.minX && o.minX < screen.maxX
+            case .left:
+                return abs(o.maxX - screen.minX) < 2 && o.maxY > screen.minY && o.minY < screen.maxY
+            case .right:
+                return abs(o.minX - screen.maxX) < 2 && o.maxY > screen.minY && o.minY < screen.maxY
+            }
+        }
+    }
+}
