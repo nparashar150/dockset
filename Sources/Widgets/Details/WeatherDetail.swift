@@ -241,7 +241,21 @@ struct WeatherDetail: View {
         picked = place
         selected = nil
         WidgetWriter.write(instance) { $0.set("city", .string(place)) }
-        guard !place.isEmpty else { return }
+        // The Mac's own location: start finding it if nothing has yet, and
+        // point the forecast at it as soon as there is a name to point at.
+        if place.isEmpty {
+            LocationService.shared.start()
+            Task {
+                for _ in 0..<20 {
+                    if let here = LocationService.shared.city {
+                        await WeatherService.shared.setLocation(city: here)
+                        return
+                    }
+                    try? await Task.sleep(for: .milliseconds(500))
+                }
+            }
+            return
+        }
         Task { await WeatherService.shared.setLocation(city: place) }
     }
 
