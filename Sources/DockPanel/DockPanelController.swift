@@ -205,10 +205,50 @@ final class DockPanelController: NSObject, NSWindowDelegate {
         // window, and an accessory app has none, so it answered with whichever
         // display the frontmost app happened to be on and the shelf stayed put
         // while the pointer moved to another.
+        //
+        // But it moves home only when the pointer reaches that display's own
+        // edge, the way Apple's Dock does: see `followPointerToEdge`. Simply
+        // being on another display used to be enough, and with a laptop below
+        // a monitor the pointer crosses onto the laptop on its way to the
+        // monitor's bottom edge, so reaching for the shelf sent it away.
+        if let home = homeScreenID, let screen = NSScreen.screens.first(where: { $0.displayID == home }) {
+            return screen
+        }
         if let pointed = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) {
             return pointed
         }
         return NSScreen.main ?? NSScreen.screens[0]
+    }
+
+    /// The display the shelf lives on while following the pointer.
+    private var homeScreenID: UInt32?
+
+    /// Moves the shelf to the display whose own edge the pointer has reached.
+    ///
+    /// Jumps rather than slides: the new place is on another display, and
+    /// animating there drew the shelf across the whole of the screen in
+    /// between. Arrives hidden, so the reveal plays on the new display.
+    private func followPointerToEdge(_ mouse: CGPoint) {
+        guard app.state.customDock.displayID == nil,
+              let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) }),
+              screen.displayID != homeScreenID else { return }
+        let frame = screen.frame
+        let strip: CGFloat = 4
+        let atEdge = switch app.effectivePosition {
+        case .bottom: mouse.y <= frame.minY + strip
+        case .left: mouse.x <= frame.minX + strip
+        case .right: mouse.x >= frame.maxX - strip
+        }
+        // The first sighting just sets a home; after that, only an edge moves it.
+        guard atEdge || homeScreenID == nil else { return }
+        homeScreenID = screen.displayID
+        revealed = false
+        hideWorkItem?.cancel()
+        hideWorkItem = nil
+        guard let panel else { return }
+        panel.setFrameOrigin(hiddenOrigin)
+        panel.alphaValue = targetAlpha
+        panel.ignoresMouseEvents = targetAlpha == 0
     }
 
     /// Where the shelf sits when visible.
@@ -488,6 +528,7 @@ final class DockPanelController: NSObject, NSWindowDelegate {
     private func poll() {
         guard panel != nil else { return }
         let mouse = NSEvent.mouseLocation
+        followPointerToEdge(mouse)
 
         // Never while a menu of ours is up - see `menuIsOpen`.
         if menuIsOpen {
