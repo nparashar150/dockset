@@ -554,6 +554,24 @@ public final class AppState {
         state.customDock.scaleOverridden = false
     }
 
+    /// Makes the shelf's settings its own, starting from what it is showing.
+    ///
+    /// Matching Apple's Dock is where a shelf starts, not a mode that hides
+    /// its controls: every setting is always there, and changing one while
+    /// matching first copies the values in use, so the shelf does not jump
+    /// to stale stored ones, and then stops matching.
+    public func takeOverFromSystemDock() {
+        guard state.customDock.followSystemDock else { return }
+        var dock = state.customDock
+        dock.position = effectivePosition
+        dock.autoHide = effectiveAutoHide
+        dock.magnification = magnificationEnabled
+        dock.scale = effectiveScale
+        dock.scaleOverridden = false
+        dock.followSystemDock = false
+        state.customDock = dock
+    }
+
     // MARK: Apple's Dock
 
     /// Captures the live Dock into a new profile without changing anything.

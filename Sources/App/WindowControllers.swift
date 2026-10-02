@@ -123,6 +123,8 @@ final class SettingsWindow: HostedWindow {
                 onSetScale: { app.setScale($0) },
                 onResumeFollowingScale: { app.resumeFollowingScale() },
                 onResumeMirroringApps: { app.resumeMirroringApps() },
+                onTakeOver: { app.takeOverFromSystemDock() },
+                inUse: { (app.effectivePosition, app.effectiveAutoHide, app.magnificationEnabled) },
                 onBackUp: { Self.backUp(app) },
                 onRestore: { Self.restore(app) },
                 onCreateProfile: { kind in

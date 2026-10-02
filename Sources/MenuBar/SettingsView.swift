@@ -38,6 +38,14 @@ struct SettingsView: View {
     /// one directional, with nothing in the app able to clear them.
     var onResumeFollowingScale: () -> Void
     var onResumeMirroringApps: () -> Void
+    /// Stops matching Apple's Dock, keeping the values in use. See
+    /// `AppState.takeOverFromSystemDock`.
+    var onTakeOver: () -> Void = {}
+    /// What the shelf is actually using, which while matching comes from
+    /// Apple's Dock rather than from the stored settings.
+    var inUse: () -> (position: DockPosition, autoHide: Bool, magnification: Bool) = {
+        (.bottom, false, false)
+    }
     /// Both present a file panel, which is AppKit's job rather than a view's.
     var onBackUp: () -> Void
     var onRestore: () -> Void
@@ -400,61 +408,57 @@ struct SettingsView: View {
     @ViewBuilder private var shelfSections: some View {
         Section {
             Toggle(isOn: $state.customDock.followSystemDock) {
-                // What is being inherited, under the switch that inherits it,
-                // rather than in a row and a footnote of its own.
+                // A starting point, not a mode that hides the shelf's own
+                // settings: every one stays below, and changing any of them
+                // makes the shelf's settings its own.
                 subtitled("Match Apple's Dock", state.customDock.followSystemDock
-                          ? SystemDockSettings.shared.summary
-                          : "Place and size the shelf yourself.")
+                          ? "\(SystemDockSettings.shared.summary). Change anything below to set your own."
+                          : "The shelf keeps its own settings.")
             }
 
-            // Hidden while the Dock dictates them, not greyed: following is
-            // the default, so greyed controls here were permanently dead for
-            // anyone who never turned it off.
-            if !state.customDock.followSystemDock {
-                HStack(spacing: 10) {
-                    ForEach(DockPosition.allCases, id: \.self) { edge in
-                        ChoiceCard(title: title(edge), selected: state.customDock.position == edge) {
-                            state.customDock.position = edge
-                        } picture: {
-                            EdgeSketch(edge: edge).frame(height: 44)
-                        }
+            HStack(spacing: 10) {
+                ForEach(DockPosition.allCases, id: \.self) { edge in
+                    ChoiceCard(title: title(edge), selected: inUse().position == edge) {
+                        onTakeOver()
+                        state.customDock.position = edge
+                    } picture: {
+                        EdgeSketch(edge: edge).frame(height: 44)
                     }
                 }
-                .padding(.vertical, 2)
+            }
+            .padding(.vertical, 2)
 
-                Picker("Display", selection: $state.customDock.displayID) {
-                    Text("Wherever the pointer is").tag(UInt32?.none)
-                    ForEach(NSScreen.screens, id: \.self) { screen in
-                        if let id = screen.docketDisplayID {
-                            Text(screen.localizedName).tag(UInt32?.some(id))
-                        }
-                    }
-                }
-
-                LabeledContent("Size") {
-                    HStack {
-                        // Through setScale, not around it. Binding straight to
-                        // the stored value skipped the override flag and never
-                        // wrote the profile, so the size silently reverted.
-                        Slider(value: Binding(get: { shownScale }, set: onSetScale),
-                               in: Geometry.scaleRange)
-                        Text("\(Int((shownScale * 100).rounded()))%")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                            .frame(width: 44, alignment: .trailing)
+            Picker("Display", selection: $state.customDock.displayID) {
+                Text("Wherever the pointer is").tag(UInt32?.none)
+                ForEach(NSScreen.screens, id: \.self) { screen in
+                    if let id = screen.docketDisplayID {
+                        Text(screen.localizedName).tag(UInt32?.some(id))
                     }
                 }
             }
 
-            // The way back from sizing the shelf with its grip while
-            // following, which used to set an override nothing could clear.
-            if scaleOverridden {
-                LabeledContent {
-                    Button("Match", action: onResumeFollowingScale)
-                } label: {
-                    subtitled("Size", "Set by hand. Everything else still follows the Dock.")
+            LabeledContent("Size") {
+                HStack {
+                    // Through setScale, not around it. Binding straight to
+                    // the stored value skipped the override flag and never
+                    // wrote the profile, so the size silently reverted.
+                    Slider(value: Binding(get: { shownScale },
+                                          set: { onTakeOver(); onSetScale($0) }),
+                           in: Geometry.scaleRange)
+                    Text("\(Int((shownScale * 100).rounded()))%")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .trailing)
+                    // The way back from sizing the shelf with its grip while
+                    // matching, beside the size it puts back rather than as a
+                    // second Size row.
+                    if scaleOverridden {
+                        Button("Match", action: onResumeFollowingScale)
+                            .controlSize(.small)
+                    }
                 }
             }
+
         }
 
         Section("Look") {
@@ -474,18 +478,17 @@ struct SettingsView: View {
             .padding(.vertical, 2)
             .help("Reduce Transparency in Accessibility settings overrides Glass and Clear.")
 
-            if !state.customDock.followSystemDock {
-                Toggle("Magnify under the pointer", isOn: $state.customDock.magnification)
-            }
+            Toggle("Magnify under the pointer", isOn: Binding(
+                get: { inUse().magnification },
+                set: { onTakeOver(); state.customDock.magnification = $0 }))
         }
 
         Section("Behaviour") {
-            // While following, hiding comes from the Dock's own setting.
-            if !state.customDock.followSystemDock {
-                Toggle("Hide until the pointer reaches the edge", isOn: $state.customDock.autoHide)
-            }
+            Toggle("Hide until the pointer reaches the edge", isOn: Binding(
+                get: { inUse().autoHide },
+                set: { onTakeOver(); state.customDock.autoHide = $0 }))
             // Only means anything while something is hiding.
-            if state.customDock.followSystemDock || state.customDock.autoHide {
+            if inUse().autoHide {
                 Toggle(isOn: $state.customDock.showHandleWhenHidden) {
                     subtitled("Leave a sliver when hidden", "So you can see where it is.")
                 }
