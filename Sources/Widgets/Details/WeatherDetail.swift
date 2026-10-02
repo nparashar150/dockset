@@ -14,6 +14,13 @@ import SwiftUI
 /// and low, because the compact endpoint the service calls carries none of
 /// them and a panel is not worth a second request.
 struct WeatherDetail: View {
+    /// The hour picked in the strip, or nil for now.
+    ///
+    /// The strip was something to read; picking an hour puts it in the large
+    /// reading above, so "what will it be like at five" is one click rather
+    /// than a squint at a column of small figures.
+    @State private var selected: Date?
+
     var instance: WidgetInstance
     var context: WidgetContext
 
@@ -51,6 +58,8 @@ struct WeatherDetail: View {
         // service's own 15-minute throttle turns a recent one into a no-op,
         // so this never hammers MET however often the panel is opened.
         .onAppear {
+            // Opened afresh, it reads now, not whatever hour was last picked.
+            selected = nil
             guard !context.isPreview else { return }
             Task { await WeatherService.shared.refresh() }
         }
@@ -80,8 +89,15 @@ struct WeatherDetail: View {
 
     // MARK: Now
 
-    private func now(_ weather: WeatherNow) -> some View {
-        HStack(alignment: .center, spacing: 12) {
+    private func now(_ current: WeatherNow) -> some View {
+        let hour = selected.flatMap { date in hours.first { $0.date == date } }
+        let weather = hour.map {
+            WeatherNow(temperatureC: $0.temperatureC, symbolName: $0.symbolName,
+                       condition: Self.condition(for: $0.symbolName))
+        } ?? current
+        let when = hour.map { $0.date.formatted(.dateTime.hour().minute()) }
+        let rain = hour.flatMap { $0.precipitationMM >= 0.1 ? String(format: "%.1f mm", $0.precipitationMM) : nil }
+        return HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 0) {
                 // The city first, as the system's own weather does: the
                 // number means nothing until you know where it is.
@@ -92,7 +108,8 @@ struct WeatherDetail: View {
                 // The hourly layout shows neither the condition nor the city,
                 // so on the shelf this widget is a bare number; both are what
                 // the panel is for, and the range rides with the condition.
-                Text([weather.condition, range].compactMap { $0 }.joined(separator: " · "))
+                Text((hour == nil ? [weather.condition, range] : [when, weather.condition, rain])
+                        .compactMap { $0 }.joined(separator: " · "))
                     .font(WidgetStyle.caption(12))
                     .foregroundStyle(WidgetStyle.secondary)
             }
@@ -108,7 +125,21 @@ struct WeatherDetail: View {
                 // A slow breath, so the reading looks alive without anything
                 // in it pretending to change faster than MET publishes.
                 .symbolEffect(.breathe, options: .repeating, isActive: !reduceMotion)
+                .contentTransition(.symbolEffect(.replace))
         }
+        .animation(.snappy(duration: 0.25), value: selected)
+    }
+
+    /// A condition named from an hour's symbol: the hourly series carries a
+    /// symbol and rainfall but not MET's own words.
+    private static func condition(for symbol: String) -> String {
+        let rules: [(String, String)] = [
+            ("bolt", "Thunder"), ("snow", "Snow"), ("sleet", "Sleet"),
+            ("heavyrain", "Heavy Rain"), ("drizzle", "Drizzle"), ("rain", "Rain"),
+            ("fog", "Fog"), ("cloud.sun", "Partly Cloudy"), ("cloud.moon", "Partly Cloudy"),
+            ("cloud", "Cloudy"), ("sun", "Clear"), ("moon", "Clear"),
+        ]
+        return rules.first { symbol.contains($0.0) }?.1 ?? "Forecast"
     }
 
     /// Big figure with a lighter degree mark, as on the tile.
@@ -135,15 +166,31 @@ struct WeatherDetail: View {
     private var strip: some View {
         HStack(spacing: 0) {
             if let weather {
-                column("Now", weather.symbolName, weather.temperatureC, lit: true)
+                pick(nil) {
+                    column("Now", weather.symbolName, weather.temperatureC, lit: selected == nil)
+                }
             }
             ForEach(hours.prefix(weather == nil ? 8 : 7), id: \.date) { hour in
                 // The hour alone. Read together the columns are an axis
                 // rather than a clock, and "2 PM" does not fit one.
-                column(hour.date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted))),
-                       hour.symbolName, hour.temperatureC, lit: false)
+                pick(hour.date) {
+                    column(hour.date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted))),
+                           hour.symbolName, hour.temperatureC, lit: selected == hour.date)
+                }
             }
         }
+    }
+
+    /// A column you can click to read that hour above.
+    private func pick(_ date: Date?, @ViewBuilder _ label: () -> some View) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.25)) { selected = date }
+        } label: {
+            label().contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .disabled(context.isPreview)
+        .accessibilityAddTraits(selected == date ? .isSelected : [])
     }
 
     private func column(_ label: String, _ symbol: String, _ celsius: Double, lit: Bool) -> some View {
