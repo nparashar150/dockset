@@ -657,9 +657,12 @@ private func render(to directory: String) async {
 @MainActor
 private func renderTiles(to directory: String) {
     try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-    let context = WidgetContext(position: .bottom, now: .now, isPreview: true)
+    // SHOTS_EDGE=left draws the side shelf's column layouts instead.
+    let edge: DockPosition = ProcessInfo.processInfo.environment["SHOTS_EDGE"] == "left" ? .left : .bottom
+    let context = WidgetContext(position: edge, now: .now, isPreview: true)
     let kinds = WidgetKind.allCases.filter { WidgetCatalog.make($0) != nil }
-    let sheet = VStack(alignment: .leading, spacing: 14) {
+    let sheet = LazyVGrid(columns: Array(repeating: GridItem(.fixed(edge == .left ? 190 : 420), alignment: .leading),
+                                         count: edge == .left ? 4 : 1), alignment: .leading, spacing: 14) {
         ForEach(kinds, id: \.self) { kind in
             HStack(spacing: 12) {
                 Text(kind.rawValue)
