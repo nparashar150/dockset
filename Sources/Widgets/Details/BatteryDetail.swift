@@ -20,16 +20,19 @@ struct BatteryDetail: View {
             MeshBackdrop(color: ground(lead))
         } content: {
             VStack(alignment: .leading, spacing: 14) {
-                if let lead { hero(lead) }
+                if let lead {
+                    hero(lead)
+                    TickMeter(fraction: lead.present ? lead.level : 0)
+                }
+                // Quiet rows rather than glass cards with rings: a name, how
+                // it is doing and a number, one line each.
                 if kinds.count > 1 {
-                    VStack(spacing: 6) {
+                    VStack(spacing: 10) {
                         ForEach(kinds.dropFirst(), id: \.self) { kind in
                             row(device(kind))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 8)
-                                .glassPane(cornerRadius: 10)
                         }
                     }
+                    .padding(.top, 2)
                 }
             }
         }
@@ -57,19 +60,19 @@ struct BatteryDetail: View {
                     let value = Int((min(max(device.level, 0), 1) * 100).rounded())
                     HStack(alignment: .firstTextBaseline, spacing: 0) {
                         Text("\(value)")
-                            .font(.system(size: 60, weight: .light))
+                            .font(.system(size: 48, weight: .light))
                             .monospacedDigit()
                             .foregroundStyle(WidgetStyle.primary)
                             .rollingValue(value)
                         Text("%")
-                            .font(.system(size: 30, weight: .light))
+                            .font(.system(size: 24, weight: .light))
                             .foregroundStyle(.white.opacity(0.7))
                     }
                 } else {
                     // A dash, never a zero: a device that is not here has no
                     // level.
                     Text("-")
-                        .font(.system(size: 60, weight: .light))
+                        .font(.system(size: 48, weight: .light))
                         .foregroundStyle(.white.opacity(0.7))
                 }
                 Text(caption(device))
@@ -89,28 +92,22 @@ struct BatteryDetail: View {
     }
 
     private func row(_ device: BatteryDevice) -> some View {
-        HStack(spacing: 12) {
-            MetricProgressRing(progress: device.present ? device.level : 0,
-                               tint: tint(device),
-                               track: .white.opacity(0.14),
-                               diameter: 34,
-                               lineWidth: 4) {
-                Image(systemName: device.kind.symbol)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(device.present ? tint(device) : WidgetStyle.secondary)
-            }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(device.kind.name)
-                    .font(WidgetStyle.label(13))
-                    .foregroundStyle(WidgetStyle.primary)
-                Text(caption(device))
-                    .font(WidgetStyle.caption(11))
-                    .foregroundStyle(WidgetStyle.secondary)
-            }
+        HStack(spacing: 10) {
+            Image(systemName: device.kind.symbol)
+                .font(.system(size: 13))
+                .foregroundStyle(WidgetStyle.secondary)
+                .frame(width: 18)
+            Text(device.kind.name)
+                .font(WidgetStyle.label(13))
+                .foregroundStyle(WidgetStyle.primary)
+            Text(caption(device))
+                .font(WidgetStyle.caption(11))
+                .foregroundStyle(WidgetStyle.secondary)
             Spacer(minLength: 8)
             percent(device)
         }
         .lineLimit(1)
+        .minimumScaleFactor(0.8)
         // One row is one fact; read as four labels it becomes a word salad.
         .accessibilityElement(children: .combine)
     }
@@ -174,12 +171,12 @@ struct BatteryDetail: View {
             let value = Int((min(max(device.level, 0), 1) * 100).rounded())
             HStack(spacing: 0) {
                 Text("\(value)")
-                    .font(WidgetStyle.value(20))
+                    .font(.system(size: 15, weight: .semibold))
                     .monospacedDigit()
                     .foregroundStyle(WidgetStyle.primary)
                     .rollingValue(value)
                 Text("%")
-                    .font(WidgetStyle.value(20))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(WidgetStyle.secondary)
             }
         } else {

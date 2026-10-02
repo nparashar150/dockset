@@ -34,10 +34,10 @@ struct RevenueDetail: View {
                         .foregroundStyle(.white.opacity(0.7))
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                // The empty state alone. An "About this metric" pane under it
+                // restated the same absence, and pushed the panel past the
+                // height every other one shares.
                 unconnected
-                about
-                    .padding(12)
-                    .glassPane()
             }
         }
     }
@@ -121,18 +121,6 @@ struct RevenueDetail: View {
     /// What the figure would mean, which is worth saying whether or not the
     /// figure is there - and the one part of this panel that is fully known
     /// without an account.
-    private var about: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text("About this metric")
-                .font(WidgetStyle.label(12))
-                .foregroundStyle(WidgetStyle.primary)
-            Text(explanation)
-                .font(WidgetStyle.caption(11.5))
-                .foregroundStyle(.white.opacity(0.7))
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
     // MARK: Provider
 
     /// Spelled here rather than read from the catalog: these three kinds have

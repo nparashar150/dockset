@@ -29,7 +29,9 @@ struct AskDetail: View {
                     connect
                 }
             }
-            .frame(height: 408, alignment: .top)
+            // The card is the standard height; this is what is left of it
+            // inside the padding. See `DetailCard.height`.
+            .frame(height: DetailCard<EmptyView, EmptyView>.height - 32, alignment: .top)
         }
         .onAppear {
             guard !context.isPreview else { return }

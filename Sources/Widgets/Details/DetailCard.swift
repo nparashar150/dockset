@@ -18,11 +18,14 @@ struct DetailCard<Backdrop: View, Content: View>: View {
 
     static var bleed: CGFloat { 10 }
     static var corner: CGFloat { 14 }
+    /// Every card is this tall, so every panel is the same size: content sits
+    /// at the top and the backdrop fills the rest. See `WidgetDetail.width`.
+    static var height: CGFloat { 300 }
 
     var body: some View {
         content()
             .padding(16)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: Self.height, alignment: .topLeading)
             .background { backdrop() }
             .environment(\.colorScheme, .dark)
             .clipShape(.rect(cornerRadius: Self.corner, style: .continuous))

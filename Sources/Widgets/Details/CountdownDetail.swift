@@ -65,7 +65,7 @@ struct CountdownDetail: View {
                     }
                     .padding(.horizontal, 22)
                 }
-                .frame(width: 176, height: 176)
+                .frame(width: 164, height: 164)
                 .frame(maxWidth: .infinity)
 
                 HStack(spacing: 10) {

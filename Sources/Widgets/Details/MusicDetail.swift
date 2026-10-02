@@ -126,7 +126,8 @@ struct MusicDetail: View {
             }
             .padding(14)
         }
-        .frame(height: 250)
+        // The same height as every other card. See `DetailCard.height`.
+        .frame(height: DetailCard<EmptyView, EmptyView>.height)
         .clipShape(.rect(cornerRadius: Self.corner, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Self.corner, style: .continuous)

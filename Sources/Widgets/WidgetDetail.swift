@@ -362,27 +362,13 @@ enum WidgetDetail {
         }
     }
 
-    static func width(_ kind: WidgetKind) -> CGFloat {
-        switch kind {
-        // Wide enough for a table or a line of code without wrapping it.
-        case .ask: 360
-        case .stripe, .paddle, .shopify: 340
-        case .calendar, .reminders: 320
-        // Set by the twelve-column strip of the next hours there.
-        case .world: 320
-        // A big time, a date and two rows: 300 left a gutter wide enough to
-        // read as padding.
-        case .clock: 280
-        case .battery: 330
-        case .notes: 300
-        case .system, .network: 340
-        // Wide enough for the whole hourly series as a strip; the tile fits
-        // five of those hours and the service publishes twelve.
-        case .weather: 340
-        case .music: 330
-        default: 300
-        }
-    }
+    /// One width for every panel.
+    ///
+    /// It was set per kind, from 280 to 360, each fitted to its own content,
+    /// so opening one widget after another made the panel jump in size as
+    /// well as in place. One width, with the card's one height, makes them
+    /// read as one thing showing different readings.
+    static func width(_ kind: WidgetKind) -> CGFloat { 340 }
 }
 
 /// The panel's outline: a rounded rectangle with a tail pointing at the tile

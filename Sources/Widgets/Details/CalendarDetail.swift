@@ -11,6 +11,9 @@ import SwiftUI
 /// says so in one line: a calendar showing a plausible day it made up is worse
 /// than a calendar showing nothing.
 struct CalendarDetail: View {
+    /// See the list below: what fits the card every panel shares.
+    private static let visibleRows = 4
+
     var instance: WidgetInstance
     var context: WidgetContext
 
@@ -132,14 +135,19 @@ struct CalendarDetail: View {
                 .padding(12)
                 .glassPane()
         } else {
+            // Four rows at most, so a busy day fits the card every panel
+            // shares; the rest are counted under them, and Calendar has them.
+            let shownTimed = Array(timed.prefix(Self.visibleRows))
+            let shownAllDay = Array(allDay.prefix(max(0, Self.visibleRows - shownTimed.count)))
+            let hidden = timed.count + allDay.count - shownTimed.count - shownAllDay.count
             VStack(alignment: .leading, spacing: 6) {
                 // Time first, calendar second: two events at 10:30 are told
                 // apart by the calendar, never the other way round.
-                ForEach(timed) { event in
+                ForEach(shownTimed) { event in
                     row(event, detail: "\(clock(event.start)) · \(event.calendar)")
                 }
             }
-            if !allDay.isEmpty {
+            if !shownAllDay.isEmpty {
                 // Below the timed events, not mixed into them: an all-day
                 // entry has no place in a list ordered by time.
                 VStack(alignment: .leading, spacing: 6) {
@@ -147,11 +155,16 @@ struct CalendarDetail: View {
                         .font(.system(size: 9, weight: .semibold))
                         .tracking(0.6)
                         .foregroundStyle(.white.opacity(0.6))
-                    ForEach(allDay) { event in
+                    ForEach(shownAllDay) { event in
                         row(event, detail: event.calendar)
                     }
                 }
                 .padding(.top, 2)
+            }
+            if hidden > 0 {
+                Text("\(hidden) more today")
+                    .font(WidgetStyle.caption(11))
+                    .foregroundStyle(.white.opacity(0.6))
             }
         }
     }
