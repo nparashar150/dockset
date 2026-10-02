@@ -63,8 +63,17 @@ public enum DockStrut {
     ///
     /// Zero while the Dock is hidden: WindowServer keeps the rect but collapses
     /// it, which is exactly the state that leaves windows running underneath.
+    ///
+    /// Zero, too, for a rect still laid along another edge. Moving the Dock
+    /// restarts it, and until it comes back WindowServer still reports the
+    /// old one: a Dock that had been on the left read as a strip 963pt
+    /// "thick" on the bottom, the settle loop took two identical stale
+    /// readings as settled, and the shelf was centred in that, floating in
+    /// the middle of the screen with the enlarged Dock showing beneath it.
     public static func thickness(on edge: DockPosition) -> CGFloat {
         let rect = reserved()
+        let alongEdge = edge.isVertical ? rect.height >= rect.width : rect.width >= rect.height
+        guard alongEdge else { return 0 }
         return edge.isVertical ? rect.width : rect.height
     }
 
