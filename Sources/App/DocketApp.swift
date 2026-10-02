@@ -79,6 +79,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor [state] in
             await StrutMode.repayIfOwed(state: state.state,
                                         clear: { state.state.borrowedDockPrefs = nil })
+            // After the strip's debt is settled, so a hidden Dock is hidden
+            // over the preferences the user actually has.
+            state.applyAppleDockVisibility()
         }
 
         startUpdateChecks(state)
@@ -114,6 +117,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let borrowed = state?.state.borrowedDockPrefs {
             state?.state.borrowedDockPrefs = nil
             DockStrut.releaseNow(borrowed)
+        }
+        // Then the hide, which was applied first and so is undone last. The
+        // choice itself is kept; the next launch hides the Dock again.
+        if let hidden = state?.state.hiddenDockPrefs {
+            state?.state.hiddenDockPrefs = nil
+            DockStrut.restoreVisibility(hidden)
         }
         state?.saveNow()
     }

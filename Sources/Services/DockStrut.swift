@@ -124,6 +124,39 @@ public enum DockStrut {
         CFPreferencesAppSynchronize(domain as CFString)
     }
 
+    // MARK: Hiding entirely
+
+    /// Hides the Dock for good: auto-hide on, with a reveal delay so long it
+    /// never comes. Returns what was there before, for `restoreVisibility`.
+    public static func hideCompletely() -> DockVisibility {
+        let values = UserDefaults.standard.persistentDomain(forName: domain) ?? [:]
+        let snapshot = DockVisibility(autoHide: values["autohide"] as? Bool,
+                                      delay: (values["autohide-delay"] as? NSNumber)?.doubleValue,
+                                      timeModifier: (values["autohide-time-modifier"] as? NSNumber)?.doubleValue)
+        writeVisibility(autoHide: true, delay: 1000, timeModifier: snapshot.timeModifier)
+        restartDockNow()
+        return snapshot
+    }
+
+    /// Puts back exactly what `hideCompletely` found.
+    public static func restoreVisibility(_ snapshot: DockVisibility) {
+        writeVisibility(autoHide: snapshot.autoHide, delay: snapshot.delay,
+                        timeModifier: snapshot.timeModifier)
+        restartDockNow()
+    }
+
+    /// A nil value deletes the key, so a preference the user never set is
+    /// not left behind as one they did.
+    private static func writeVisibility(autoHide: Bool?, delay: Double?, timeModifier: Double?) {
+        let defaults = UserDefaults.standard
+        var values = defaults.persistentDomain(forName: domain) ?? [:]
+        values["autohide"] = autoHide
+        values["autohide-delay"] = delay
+        values["autohide-time-modifier"] = timeModifier
+        defaults.setPersistentDomain(values, forName: domain)
+        CFPreferencesAppSynchronize(domain as CFString)
+    }
+
     private static func restartDock() async { restartDockNow() }
 
     private static func restartDockNow() {

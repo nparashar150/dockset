@@ -53,6 +53,21 @@ public struct DockPrefs: Codable, Hashable, Sendable {
     }
 }
 
+/// The Dock's hiding preferences as they were before Docket hid it entirely.
+/// A nil field was absent and is deleted again on restore, rather than
+/// written back as a value the user never had.
+public struct DockVisibility: Codable, Hashable, Sendable {
+    public var autoHide: Bool?
+    public var delay: Double?
+    public var timeModifier: Double?
+
+    public init(autoHide: Bool?, delay: Double?, timeModifier: Double?) {
+        self.autoHide = autoHide
+        self.delay = delay
+        self.timeModifier = timeModifier
+    }
+}
+
 public enum DockPosition: String, Codable, Sendable, CaseIterable {
     case left, bottom, right   // deliberately no .top - the menu bar owns that edge
     public var isVertical: Bool { self != .bottom }
@@ -778,6 +793,13 @@ public struct PersistedState: Codable, Sendable {
     /// Apple's Dock preferences from before the shelf borrowed its strip.
     /// Non-nil means they are currently changed and owe a restore.
     public var borrowedDockPrefs: DockPrefs?
+    /// The user asked for Apple's Dock to be hidden entirely.
+    public var hideAppleDock = false
+    /// What hiding it changed. Non-nil means the Dock is hidden now and owes a
+    /// restore, which quitting pays; `hideAppleDock` then puts it back on the
+    /// next launch. Two fields so that quitting Docket never leaves someone
+    /// without a Dock, and relaunching it keeps their choice.
+    public var hiddenDockPrefs: DockVisibility?
     /// Whether to look for new releases.
     ///
     /// Three states on purpose. Nil means the question has not been asked, and
@@ -808,6 +830,8 @@ public struct PersistedState: Codable, Sendable {
         timer = try c.decodeIfPresent(TimerState.self, forKey: .timer) ?? TimerState()
         originalMacOSDock = try c.decodeIfPresent([MacOSDockTile].self, forKey: .originalMacOSDock)
         borrowedDockPrefs = try c.decodeIfPresent(DockPrefs.self, forKey: .borrowedDockPrefs)
+        hideAppleDock = try c.decodeIfPresent(Bool.self, forKey: .hideAppleDock) ?? false
+        hiddenDockPrefs = try c.decodeIfPresent(DockVisibility.self, forKey: .hiddenDockPrefs)
         checkForUpdates = try c.decodeIfPresent(Bool.self, forKey: .checkForUpdates)
     }
 

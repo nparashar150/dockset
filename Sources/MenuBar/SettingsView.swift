@@ -11,6 +11,10 @@ import Observation
 final class SettingsSelection {
     static let shared = SettingsSelection()
     var current = "Shelf"
+    /// The widget the Widgets tab shows, when a caller named one. Here for the
+    /// same reason as `current`: "Widget Settings…" on a shelf widget has to
+    /// land on that widget even when the window is only being raised.
+    var widget: UUID?
     private init() {}
 }
 
@@ -52,6 +56,9 @@ struct SettingsView: View {
     /// Puts Apple's Dock back the way it was before Docket first wrote to it.
     /// Only offered once there is something to go back to.
     var onRestoreOriginalDock: () -> Void
+    /// Hiding Apple's Dock writes its preferences and restarts it, which is
+    /// AppState's to do, not this view's.
+    var onSetHideAppleDock: (Bool) -> Void
 
     /// Which tab is showing, held outside the view.
     ///
@@ -193,6 +200,18 @@ struct SettingsView: View {
                        selection: $state.macOSDock.profileID, allowsNone: true)
 
             Section {
+                Toggle(isOn: Binding(get: { state.hideAppleDock }, set: onSetHideAppleDock)) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Hide Apple's Dock")
+                        Text(state.setup == .customReplacement
+                             ? "Shelf only keeps the Dock behind the shelf to hold its place, so it cannot be hidden there."
+                             : "It never appears, even at the screen edge. Turn this off to bring it back.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(state.setup == .customReplacement)
+
                 HStack {
                     Button("Apply to Dock", action: onApplyMacOSProfile)
                         .disabled(state.activeMacOSProfile == nil)
@@ -249,7 +268,9 @@ struct SettingsView: View {
             // "None" is the documented "leave the live Dock completely alone"
             // state, which has to stay reachable after the first capture.
             if allowsNone {
-                LayoutRow(name: .constant("None"), editable: false,
+                // Named for what it does. "None" read as an action that had
+                // quietly failed: choosing it changes nothing, by design.
+                LayoutRow(name: .constant("Leave the Dock as it is"), editable: false,
                           active: selection.wrappedValue == nil,
                           onUse: { selection.wrappedValue = nil }) { EmptyView() }
             }

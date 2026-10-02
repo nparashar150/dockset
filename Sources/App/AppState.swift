@@ -593,6 +593,28 @@ public final class AppState {
     }
 
     /// Puts back whatever the user had before Docket first wrote to the Dock.
+    /// Hides Apple's Dock entirely, or brings it back.
+    public func setHideAppleDock(_ hide: Bool) {
+        state.hideAppleDock = hide
+        applyAppleDockVisibility()
+    }
+
+    /// Makes the Dock's visibility match `hideAppleDock`.
+    ///
+    /// Not while the shelf is borrowing the Dock's strip ("Shelf only"): that
+    /// works by keeping the Dock showing behind the shelf, and hiding it would
+    /// collapse the strip the shelf stands in. Settings disables the switch
+    /// there, and this refuses it too, for a state file that asks anyway.
+    public func applyAppleDockVisibility() {
+        if state.hideAppleDock, state.hiddenDockPrefs == nil, state.borrowedDockPrefs == nil {
+            state.hiddenDockPrefs = DockStrut.hideCompletely()
+        } else if !state.hideAppleDock, let snapshot = state.hiddenDockPrefs {
+            state.hiddenDockPrefs = nil
+            DockStrut.restoreVisibility(snapshot)
+        }
+        SystemDockSettings.shared.refresh()
+    }
+
     public func restoreOriginalDock() async {
         guard let original = state.originalMacOSDock else { return }
         isApplying = true

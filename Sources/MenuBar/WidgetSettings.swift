@@ -10,9 +10,11 @@ import SwiftUI
 struct WidgetSettingsSections: View {
     @Binding var state: PersistedState
 
-    /// Which widget is being edited. `nil` means "whichever is first", which
-    /// is also where a selection goes when its widget leaves the shelf.
-    @State private var selection: UUID?
+    /// Which widget is being edited, shared so a shelf widget's "Widget
+    /// Settings…" can choose it. `nil` means "whichever is first", which is
+    /// also where a selection goes when its widget leaves the shelf.
+    @State private var shared = SettingsSelection.shared
+    private var selection: UUID? { shared.widget }
 
     var body: some View {
         if instances.isEmpty {
@@ -37,7 +39,7 @@ struct WidgetSettingsSections: View {
             Section("Widgets") {
                 Picker("Widget", selection: Binding(
                     get: { chosen?.instance.id },
-                    set: { selection = $0 })) {
+                    set: { shared.widget = $0 })) {
                     ForEach(configurable, id: \.instance.id) { pair in
                         Text(sectionTitle(for: pair)).tag(Optional(pair.instance.id))
                     }
@@ -45,6 +47,17 @@ struct WidgetSettingsSections: View {
             }
 
             if let pair = chosen {
+                // The widget itself, live, at the top: which one is being
+                // edited is then never a matter of reading a picker, and
+                // every change below shows on it as it is made.
+                Section {
+                    WidgetTile(instance: pair.instance,
+                               context: WidgetContext(position: .bottom, now: .now, isPreview: false))
+                        .allowsHitTesting(false)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+
                 // Numbered only when there is more than one of a kind. Two
                 // Sticky Notes produced two headings both called "Sticky
                 // Note", with nothing to say which note each one edited.

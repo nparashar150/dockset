@@ -1201,7 +1201,11 @@ struct DockShelfView: View {
             }
             if entry.item.isWidget {
                 Button("Widget Settings…") {
-                    SettingsWindow.shared.show(app: app, tab: "Widgets")
+                    // This widget's settings, not whichever is first: the
+                    // tab used to open on the first widget, which read as
+                    // a near-empty pane for the one that was clicked.
+                    SettingsWindow.shared.show(app: app, tab: "Widgets",
+                                               widget: entry.item.widget?.id)
                 }
             }
             if let widget = entry.item.widget,
