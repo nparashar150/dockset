@@ -799,7 +799,19 @@ struct DockShelfView: View {
             // a panel to show or an app to open: a tap gesture whose action is
             // a no-op still *consumes* the tap.
             .modifier(TapToOpen(enabled: entry.opens,
-                                 label: entry.actionLabel) { open(entry) })
+                                 label: entry.actionLabel) {
+                // Anchored to the tile clicked, worked out now. The anchor
+                // used to be whatever the last hover had left behind, and
+                // after the shelf slid in or its tiles changed size that was
+                // another tile's, so a panel opened beside the wrong one.
+                if let index = solved.slots.firstIndex(where: {
+                    if case .item(let other) = $0 { return other.id == entry.id }
+                    return false
+                }), let anchor = screenAnchor(target(at: index, solved)) {
+                    hoverAnchor = anchor
+                }
+                open(entry)
+            })
             .gesture(reorderGesture(entry, solved))
             // Collapsing children puts the label on the tile, but it also
             // hides a widget's own controls from assistive tech, so only do it
@@ -979,7 +991,13 @@ struct DockShelfView: View {
             guard case .item = solved.slots[index] else { return false }
             return abs(pointer - plateCentre(of: index, solved))
                 <= solved.lengths[index] * solved.scales[index] / 2
-        }), case .item(let entry) = solved.slots[hit] else { return nil }
+        }) else { return nil }
+        return target(at: hit, solved)
+    }
+
+    /// The hover target for one slot, whether or not the pointer is on it.
+    private func target(at hit: Int, _ solved: Solved) -> HoverTarget? {
+        guard case .item(let entry) = solved.slots[hit] else { return nil }
 
         let along = plateCentre(of: hit, solved) + shelfInset(solved)
         // Point at the far edge of the magnified tile, which is what the Dock
@@ -1011,19 +1029,23 @@ struct DockShelfView: View {
                            along: along, cross: cross, centre: centre, id: entry.id)
     }
 
+    /// Where a target sits on screen. SwiftUI measures down from the top of
+    /// the content; AppKit screen coordinates go up from the bottom.
+    private func screenAnchor(_ target: HoverTarget?) -> CGPoint? {
+        guard let target, let frame = shelfWindow?.frame else { return nil }
+        return switch position {
+        case .bottom: CGPoint(x: frame.minX + target.along, y: frame.maxY - target.cross)
+        case .left, .right: CGPoint(x: frame.minX + target.cross, y: frame.maxY - target.along)
+        }
+    }
+
     private func applyHoverLabel(_ target: HoverTarget?) {
         guard let target, let window = shelfWindow else {
             TooltipWindow.shared.hide()
             return
         }
         let frame = window.frame
-        // SwiftUI measures down from the top of the content; AppKit screen
-        // coordinates go up from the bottom.
-        let anchor: CGPoint = switch position {
-        case .bottom: CGPoint(x: frame.minX + target.along, y: frame.maxY - target.cross)
-        case .left: CGPoint(x: frame.minX + target.cross, y: frame.maxY - target.along)
-        case .right: CGPoint(x: frame.minX + target.cross, y: frame.maxY - target.along)
-        }
+        guard let anchor = screenAnchor(target) else { return }
         // Kept so an opened group or widget panel can grow from the tile that
         // was clicked: you have to be hovering a tile to click it, so this is
         // the right anchor by the time `open` runs - which is why every tile
