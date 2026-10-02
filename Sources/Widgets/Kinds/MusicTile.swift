@@ -252,7 +252,14 @@ struct MusicTile: View {
         VStack(spacing: 3) {
             Artwork(image: track.artwork, fallback: sourceIcon(track), side: 32, corner: 7)
             VStack(spacing: 0) {
-                title(track, size: 11)
+                // Two lines in a column, where one cut a title to its first
+                // word: a column has height to spare and no width at all.
+                Text(track.title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(ink)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.85)
                 artist(track, size: 10)
             }
             transport(track, size: 11, spacing: 6)
