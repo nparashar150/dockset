@@ -12,7 +12,7 @@ import SwiftUI
 /// than a calendar showing nothing.
 struct CalendarDetail: View {
     /// See the list below: what fits the card every panel shares.
-    private static let visibleRows = 4
+    private static let visibleRows = 3
 
     var instance: WidgetInstance
     var context: WidgetContext
@@ -135,7 +135,7 @@ struct CalendarDetail: View {
                 .padding(12)
                 .glassPane()
         } else {
-            // Four rows at most, so a busy day fits the card every panel
+            // Three rows at most, so a busy day fits the card every panel
             // shares; the rest are counted under them, and Calendar has them.
             let shownTimed = Array(timed.prefix(Self.visibleRows))
             let shownAllDay = Array(allDay.prefix(max(0, Self.visibleRows - shownTimed.count)))

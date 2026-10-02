@@ -25,7 +25,7 @@ struct RevenueDetail: View {
         DetailCard {
             MeshBackdrop(color: brand)
         } content: {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 6) {
                     accountRow
                     metricRow
@@ -100,14 +100,6 @@ struct RevenueDetail: View {
                 .font(WidgetStyle.caption(12))
                 .foregroundStyle(.white.opacity(0.7))
                 .fixedSize(horizontal: false, vertical: true)
-            // Points at the panel's own settings button rather than repeating
-            // it: the header already carries the only control that can reach
-            // the widget's settings from here.
-            Label("Connect an account with the settings button at the top of this panel",
-                  systemImage: "slider.horizontal.3")
-                .font(WidgetStyle.label(11.5))
-                .foregroundStyle(.white)
-                .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
@@ -118,9 +110,6 @@ struct RevenueDetail: View {
         }
     }
 
-    /// What the figure would mean, which is worth saying whether or not the
-    /// figure is there - and the one part of this panel that is fully known
-    /// without an account.
     // MARK: Provider
 
     /// Spelled here rather than read from the catalog: these three kinds have

@@ -20,7 +20,7 @@ struct DetailCard<Backdrop: View, Content: View>: View {
     static var corner: CGFloat { 14 }
     /// Every card is this tall, so every panel is the same size: content sits
     /// at the top and the backdrop fills the rest. See `WidgetDetail.width`.
-    static var height: CGFloat { 300 }
+    static var height: CGFloat { 240 }
 
     var body: some View {
         content()
@@ -233,48 +233,6 @@ struct SkyBackdrop: View {
             return zip(c0, c1).map { MeshBackdrop.muted($0.mix(with: $1, by: f), by: 0.6) }
         }
         return night.map { MeshBackdrop.muted($0, by: 0.6) }
-    }
-}
-
-/// The weather's own sky, from the condition's symbol: blue for sun, slate
-/// for cloud, steel for rain, pale for snow, indigo by night. The condition's
-/// symbol is set large and soft in the corner, as a light source rather than
-/// an icon.
-struct WeatherBackdrop: View {
-    var symbol: String
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            LinearGradient(colors: Self.palette(symbol).map { MeshBackdrop.muted($0, by: 0.6) },
-                           startPoint: .top, endPoint: .bottom)
-            Image(systemName: symbol)
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(.white)
-                .font(.system(size: 150))
-                .opacity(0.07)
-                .blur(radius: 3)
-                .offset(x: 34, y: -30)
-        }
-        .clipped()
-    }
-
-    static func palette(_ symbol: String) -> [Color] {
-        if symbol.contains("moon") {
-            return [Color(red: 0.08, green: 0.1, blue: 0.28), Color(red: 0.18, green: 0.16, blue: 0.4)]
-        }
-        if symbol.contains("snow") || symbol.contains("sleet") {
-            return [Color(red: 0.3, green: 0.37, blue: 0.47), Color(red: 0.42, green: 0.49, blue: 0.58)]
-        }
-        if symbol.contains("rain") || symbol.contains("drizzle") || symbol.contains("bolt") {
-            return [Color(red: 0.16, green: 0.22, blue: 0.32), Color(red: 0.28, green: 0.36, blue: 0.46)]
-        }
-        if symbol.contains("fog") || symbol.contains("smoke") || symbol.contains("haze") {
-            return [Color(red: 0.34, green: 0.36, blue: 0.4), Color(red: 0.48, green: 0.5, blue: 0.54)]
-        }
-        if symbol.contains("sun") {
-            return [Color(red: 0.13, green: 0.32, blue: 0.56), Color(red: 0.27, green: 0.46, blue: 0.66)]
-        }
-        return [Color(red: 0.22, green: 0.27, blue: 0.36), Color(red: 0.32, green: 0.38, blue: 0.47)]
     }
 }
 

@@ -46,9 +46,9 @@ struct RemindersDetail: View {
     /// A day's events are bounded; a backlog of overdue reminders is not, and
     /// the chrome sizes itself to its content, so an unbounded list would grow
     /// a panel taller than the screen.
-    /// Four, so the list fits the card every panel shares; the rest are
+    /// Three, so the list fits the card every panel shares; the rest are
     /// counted in a line under it rather than growing the panel.
-    private static let visibleRows = 4
+    private static let visibleRows = 3
 
     var body: some View {
         // Minute by minute, not from `context.now`: the chrome assigns this

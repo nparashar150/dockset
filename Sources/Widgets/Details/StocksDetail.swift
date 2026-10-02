@@ -163,7 +163,7 @@ struct StocksDetail: View {
             // on rather than a figure boxed underneath it.
             ZStack(alignment: .bottom) {
                 DitherChart(samples: samples, tint: .white.opacity(0.85))
-                    .frame(height: 84)
+                    .frame(height: 72)
                 // The ends of the plotted range, not a clock: the service keeps
                 // closes without their timestamps, so a time axis here would be
                 // guesswork.

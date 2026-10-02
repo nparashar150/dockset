@@ -41,7 +41,7 @@ struct CountdownDetail: View {
         return DetailCard {
             MeshBackdrop(color: accent)
         } content: {
-            VStack(spacing: 16) {
+            VStack(spacing: 12) {
                 ZStack {
                     Circle()
                         .stroke(.white.opacity(0.12), lineWidth: 5)
@@ -51,7 +51,7 @@ struct CountdownDetail: View {
                         .rotationEffect(.degrees(-90))
                     VStack(spacing: 2) {
                         Text(docketClockString(left))
-                            .font(.system(size: 40, weight: .semibold, design: .rounded))
+                            .font(.system(size: 30, weight: .light))
                             .monospacedDigit()
                             .foregroundStyle(WidgetStyle.primary)
                             .rollingValue(Int(left.rounded(.up)))
@@ -63,9 +63,9 @@ struct CountdownDetail: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
-                    .padding(.horizontal, 22)
+                    .padding(.horizontal, 16)
                 }
-                .frame(width: 164, height: 164)
+                .frame(width: 120, height: 120)
                 .frame(maxWidth: .infinity)
 
                 HStack(spacing: 10) {

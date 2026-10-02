@@ -33,9 +33,8 @@ struct WorldClockDetail: View {
             DetailCard {
                 SkyBackdrop(date: now, zone: zone)
             } content: {
-                VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 8) {
                     headline(now)
-                        .padding(.top, 18)
 
                     HStack(spacing: 8) {
                         StatChip(label: "Here", value: ClockFormat.time(now, zone: .current))
@@ -57,7 +56,7 @@ struct WorldClockDetail: View {
     private func headline(_ now: Date) -> some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                ClockPanelTime(now: now, zone: zone, size: 40)
+                ClockPanelTime(now: now, zone: zone, size: 34)
                 Text(city)
                     .font(WidgetStyle.label(15))
                     .foregroundStyle(WidgetStyle.primary)
@@ -82,7 +81,7 @@ struct WorldClockDetail: View {
     /// Read as a pair of rows it answers the only question the tile provokes:
     /// what time is it there when it is a reasonable hour here.
     private func strip(_ now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 2) {
                 ForEach(Self.hours(from: now), id: \.self) { hour in
                     VStack(spacing: 3) {

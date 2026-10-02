@@ -19,7 +19,7 @@ struct BatteryDetail: View {
         DetailCard {
             MeshBackdrop(color: ground(lead))
         } content: {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 if let lead {
                     hero(lead)
                     TickMeter(fraction: lead.present ? lead.level : 0)
@@ -27,7 +27,7 @@ struct BatteryDetail: View {
                 // Quiet rows rather than glass cards with rings: a name, how
                 // it is doing and a number, one line each.
                 if kinds.count > 1 {
-                    VStack(spacing: 10) {
+                    VStack(spacing: 8) {
                         ForEach(kinds.dropFirst(), id: \.self) { kind in
                             row(device(kind))
                         }
