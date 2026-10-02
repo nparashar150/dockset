@@ -17,12 +17,17 @@ struct WeatherDetail: View {
     var instance: WidgetInstance
     var context: WidgetContext
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        // The condition's own sky, with its symbol as the light source.
+        // Graphite like every other panel. The tinted sky with a blurred
+        // symbol behind it read as a wallpaper rather than a reading; the
+        // condition is said by the symbol beside the figure instead, where it
+        // can move.
         DetailCard {
-            WeatherBackdrop(symbol: weather?.symbolName ?? "cloud.fill")
+            MeshBackdrop(color: Color(red: 0.3, green: 0.5, blue: 0.8))
         } content: {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
                 if city.isEmpty {
                     noPlace
                 } else if let weather {
@@ -32,20 +37,22 @@ struct WeatherDetail: View {
                 }
 
                 if !hours.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        strip
-                        range
-                    }
-                    .padding(10)
-                    .glassPane()
+                    strip
+                        .padding(.vertical, 8)
+                        .padding(.horizontal, 6)
+                        .glassPane()
                 }
 
-                // CC BY 4.0 asks for this wherever the data is shown, and the
-                // tile is too small to carry it.
-                Text(WeatherService.attribution)
-                    .font(WidgetStyle.caption(10))
-                    .foregroundStyle(.white.opacity(0.55))
+                footer
             }
+        }
+        // MET publishes hourly, so this cannot tick the way CPU does, but it
+        // can be current: opening the panel asks for a fresh forecast. The
+        // service's own 15-minute throttle turns a recent one into a no-op,
+        // so this never hammers MET however often the panel is opened.
+        .onAppear {
+            guard !context.isPreview else { return }
+            Task { await WeatherService.shared.refresh() }
         }
     }
 
@@ -74,26 +81,33 @@ struct WeatherDetail: View {
     // MARK: Now
 
     private func now(_ weather: WeatherNow) -> some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 1) {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 0) {
                 // The city first, as the system's own weather does: the
                 // number means nothing until you know where it is.
                 Text(city)
-                    .font(WidgetStyle.label(15))
+                    .font(WidgetStyle.label(13))
                     .foregroundStyle(WidgetStyle.primary)
                 temperature(weather.temperatureC)
                 // The hourly layout shows neither the condition nor the city,
-                // so on the shelf this widget is a bare number - both lines
-                // are what the panel is for.
-                Text(weather.condition)
-                    .font(WidgetStyle.label(13))
-                    .foregroundStyle(.white.opacity(0.8))
+                // so on the shelf this widget is a bare number; both are what
+                // the panel is for, and the range rides with the condition.
+                Text([weather.condition, range].compactMap { $0 }.joined(separator: " · "))
+                    .font(WidgetStyle.caption(12))
+                    .foregroundStyle(WidgetStyle.secondary)
             }
             // A city typed in full ("Thiruvananthapuram") truncates rather
             // than pushing the panel's fixed width around.
             .lineLimit(1)
             .truncationMode(.tail)
             Spacer(minLength: 0)
+            Image(systemName: weather.symbolName)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.white)
+                .font(.system(size: 42))
+                // A slow breath, so the reading looks alive without anything
+                // in it pretending to change faster than MET publishes.
+                .symbolEffect(.breathe, options: .repeating, isActive: !reduceMotion)
         }
     }
 
@@ -102,12 +116,12 @@ struct WeatherDetail: View {
         let reading = Int(converted(celsius).rounded())
         return HStack(alignment: .top, spacing: 0) {
             Text("\(reading)")
-                .font(.system(size: 64, weight: .light))
+                .font(.system(size: 52, weight: .light))
                 .foregroundStyle(WidgetStyle.primary)
                 .monospacedDigit()
                 .rollingValue(reading)
             Text("°")
-                .font(.system(size: 44, weight: .ultraLight))
+                .font(.system(size: 36, weight: .ultraLight))
                 .foregroundStyle(WidgetStyle.primary)
         }
         .lineLimit(1)
@@ -115,50 +129,85 @@ struct WeatherDetail: View {
 
     // MARK: Hours
 
-    /// Every hour the service holds, where the tile's strip stops at five.
+    /// Now, then the next seven hours. Eight columns, where twelve crowded a
+    /// panel that is now shorter; "Now" leads, lit, so the strip reads from
+    /// where you are.
     private var strip: some View {
         HStack(spacing: 0) {
-            ForEach(hours, id: \.date) { hour in
-                VStack(spacing: 2) {
-                    // The hour alone. Twelve columns have no room for "2 PM",
-                    // and read together they are an axis rather than a clock.
-                    Text(hour.date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted))))
-                        .font(WidgetStyle.caption(10))
-                        .foregroundStyle(WidgetStyle.secondary)
-                        .monospacedDigit()
-                    Image(systemName: hour.symbolName)
-                        .symbolRenderingMode(.multicolor)
-                        .font(.system(size: 14))
-                    Text(degrees(hour.temperatureC))
-                        .font(WidgetStyle.label(11))
-                        .foregroundStyle(WidgetStyle.primary)
-                        .monospacedDigit()
-                }
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(maxWidth: .infinity)
+            if let weather {
+                column("Now", weather.symbolName, weather.temperatureC, lit: true)
+            }
+            ForEach(hours.prefix(weather == nil ? 8 : 7), id: \.date) { hour in
+                // The hour alone. Read together the columns are an axis
+                // rather than a clock, and "2 PM" does not fit one.
+                column(hour.date.formatted(.dateTime.hour(.defaultDigits(amPM: .omitted))),
+                       hour.symbolName, hour.temperatureC, lit: false)
             }
         }
     }
 
-    /// The span of the strip beside it, named with the hours it actually
-    /// covers: MET's series thins into 6- and 12-hour buckets that carry no
-    /// hourly symbol, so twelve is a ceiling and not a promise.
-    @ViewBuilder private var range: some View {
-        let temperatures = hours.map(\.temperatureC)
-        if let low = temperatures.min(), let high = temperatures.max() {
-            HStack(spacing: 12) {
-                Text(hours.count == 1 ? "Next hour" : "Next \(hours.count) hours")
-                    .font(WidgetStyle.caption(12))
-                    .foregroundStyle(WidgetStyle.secondary)
-                Spacer(minLength: 0)
-                Text(low == high ? degrees(low) : "\(degrees(low)) – \(degrees(high))")
-                    .font(WidgetStyle.label(12))
-                    .foregroundStyle(WidgetStyle.primary)
-                    .monospacedDigit()
-            }
-            .lineLimit(1)
+    private func column(_ label: String, _ symbol: String, _ celsius: Double, lit: Bool) -> some View {
+        VStack(spacing: 3) {
+            Text(label)
+                .font(WidgetStyle.caption(10))
+                .foregroundStyle(lit ? WidgetStyle.primary : WidgetStyle.secondary)
+                .monospacedDigit()
+            Image(systemName: symbol)
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(.white)
+                .font(.system(size: 13))
+                .frame(height: 16)
+            Text(degrees(celsius))
+                .font(WidgetStyle.label(11))
+                .foregroundStyle(WidgetStyle.primary)
+                .monospacedDigit()
         }
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+        .background {
+            if lit {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(.white.opacity(0.1))
+            }
+        }
+    }
+
+    /// The span of the hours the strip covers, or nil with none to cover.
+    private var range: String? {
+        let temperatures = hours.prefix(7).map(\.temperatureC)
+        guard let low = temperatures.min(), let high = temperatures.max() else { return nil }
+        return low == high ? degrees(low) : "\(degrees(low))–\(degrees(high))"
+    }
+
+    // MARK: Footer
+
+    /// How old the reading is, counting up, and the credit MET asks for.
+    /// The age is what makes an hourly forecast read as live: it moves.
+    private var footer: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { tick in
+            HStack(spacing: 8) {
+                Text(updated(at: tick.date))
+                Spacer(minLength: 4)
+                // CC BY 4.0 asks for this wherever the data is shown, and
+                // the tile is too small to carry it.
+                Text(WeatherService.attribution)
+            }
+            .font(WidgetStyle.caption(10))
+            .foregroundStyle(.white.opacity(0.45))
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+        }
+    }
+
+    private func updated(at now: Date) -> String {
+        guard !context.isPreview else { return "Updated just now" }
+        guard let when = WeatherService.shared.updatedAt else { return "Updating…" }
+        let minutes = Int(now.timeIntervalSince(when) / 60)
+        if minutes < 1 { return "Updated just now" }
+        if minutes < 60 { return "Updated \(minutes) min ago" }
+        return "Updated \(minutes / 60) h ago"
     }
 
     // MARK: Empty states

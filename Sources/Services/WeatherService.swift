@@ -49,6 +49,10 @@ final class WeatherService {
 
     private(set) var current: WeatherNow?
     private(set) var hourly: [WeatherHour] = []
+    /// When MET last confirmed what is shown, by a fresh forecast or by a 304
+    /// saying nothing changed. What lets the panel say how old the reading
+    /// is, which is most of what makes an hourly forecast feel alive.
+    private(set) var updatedAt: Date?
 
     @ObservationIgnored private var coordinate: Coordinate?
     @ObservationIgnored private var city = ""
@@ -72,6 +76,7 @@ final class WeatherService {
             // A new place must not keep showing the old place's numbers.
             current = nil
             hourly = []
+            updatedAt = nil
             lastAttempt = nil
             lastModified = nil
         }
@@ -104,7 +109,10 @@ final class WeatherService {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return }
             // 304: what we already show is current.
-            guard http.statusCode != 304 else { return }
+            guard http.statusCode != 304 else {
+                updatedAt = .now
+                return
+            }
             guard http.statusCode == 200 else { return }
 
             let decoder = JSONDecoder()
@@ -112,6 +120,7 @@ final class WeatherService {
             decoder.dateDecodingStrategy = .iso8601
             apply(try decoder.decode(Forecast.self, from: data))
             lastModified = http.value(forHTTPHeaderField: "Last-Modified")
+            updatedAt = .now
         } catch {
             // Offline, throttled or malformed - keep the last good values.
         }
