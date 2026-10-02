@@ -61,6 +61,19 @@ final class WeatherService {
     @ObservationIgnored private var loading = false
     @ObservationIgnored private var geocoded: [String: Coordinate] = [:]
 
+    /// What each place last showed, so switching between saved places is
+    /// instant and each keeps its own 15-minute allowance with MET, rather
+    /// than every switch being a fresh request for a place seen a minute ago.
+    private struct Snapshot {
+        var coordinate: Coordinate
+        var current: WeatherNow?
+        var hourly: [WeatherHour]
+        var updatedAt: Date?
+        var lastAttempt: Date?
+        var lastModified: String?
+    }
+    @ObservationIgnored private var snapshots: [String: Snapshot] = [:]
+
     private init() {}
 
     // MARK: - API
@@ -71,16 +84,31 @@ final class WeatherService {
         let wanted = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if !wanted.isEmpty, wanted.caseInsensitiveCompare(city) != .orderedSame,
            let found = await coordinate(for: wanted) {
+            // Keep what this place showed, for when it is switched back to.
+            if let coordinate, !city.isEmpty {
+                snapshots[city.lowercased()] = Snapshot(
+                    coordinate: coordinate, current: current, hourly: hourly,
+                    updatedAt: updatedAt, lastAttempt: lastAttempt, lastModified: lastModified)
+            }
             city = wanted
             coordinate = found
-            // A new place must not keep showing the old place's numbers.
-            current = nil
-            hourly = []
-            updatedAt = nil
-            lastAttempt = nil
-            lastModified = nil
+            // A place seen before comes back as it was; a new one must not
+            // keep showing the old place's numbers.
+            let saved = snapshots[wanted.lowercased()]
+            current = saved?.current
+            hourly = saved?.hourly ?? []
+            updatedAt = saved?.updatedAt
+            lastAttempt = saved?.lastAttempt
+            lastModified = saved?.lastModified
         }
         await refresh()
+    }
+
+    /// Whether a name can be found as a place, for saving it only if it can.
+    func resolves(city name: String) async -> Bool {
+        let wanted = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !wanted.isEmpty else { return false }
+        return await coordinate(for: wanted) != nil
     }
 
     /// Fetches unless the last attempt was under 15 minutes ago. Any failure

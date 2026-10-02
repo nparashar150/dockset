@@ -21,6 +21,17 @@ struct WeatherDetail: View {
     /// than a squint at a column of small figures.
     @State private var selected: Date?
 
+    /// The place picked in this panel, ahead of the widget's stored one: the
+    /// panel is handed the widget as it was when it opened, so a switch made
+    /// here has to be remembered here as well as written back.
+    @State private var picked: String?
+    /// Places saved on this widget, likewise ahead of the stored list.
+    @State private var savedPlaces: [String]?
+    @State private var adding = false
+    @State private var draft = ""
+    @State private var notFound = false
+    @FocusState private var typing: Bool
+
     var instance: WidgetInstance
     var context: WidgetContext
 
@@ -72,7 +83,7 @@ struct WeatherDetail: View {
 
     /// An empty `city` means "wherever I am", same as on the tile.
     private var city: String {
-        let stored = instance.config.string("city").trimmingCharacters(in: .whitespaces)
+        let stored = (picked ?? instance.config.string("city")).trimmingCharacters(in: .whitespaces)
         if !stored.isEmpty { return stored }
         return context.isPreview ? Self.sampleCity : (LocationService.shared.city ?? "")
     }
@@ -101,9 +112,7 @@ struct WeatherDetail: View {
             VStack(alignment: .leading, spacing: 0) {
                 // The city first, as the system's own weather does: the
                 // number means nothing until you know where it is.
-                Text(city)
-                    .font(WidgetStyle.label(13))
-                    .foregroundStyle(WidgetStyle.primary)
+                placeMenu
                 temperature(weather.temperatureC)
                 // The hourly layout shows neither the condition nor the city,
                 // so on the shelf this widget is a bare number; both are what
@@ -140,6 +149,130 @@ struct WeatherDetail: View {
             ("cloud", "Cloudy"), ("sun", "Clear"), ("moon", "Clear"),
         ]
         return rules.first { symbol.contains($0.0) }?.1 ?? "Forecast"
+    }
+
+    // MARK: Places
+
+    private var places: [String] {
+        savedPlaces ?? instance.config.strings("places")
+    }
+
+    /// The city's name is the switch: every saved place, the Mac's own
+    /// location, and adding or removing one, from the name being read.
+    @ViewBuilder private var placeMenu: some View {
+        if adding {
+            HStack(spacing: 6) {
+                TextField("City", text: $draft)
+                    .textFieldStyle(.plain)
+                    .font(WidgetStyle.label(13))
+                    .focused($typing)
+                    .onSubmit(add)
+                    .onAppear { typing = true }
+                if notFound {
+                    Text("Not found")
+                        .font(WidgetStyle.caption(11))
+                        .foregroundStyle(WidgetStyle.secondary)
+                }
+                Button("Cancel") { adding = false; draft = ""; notFound = false }
+                    .buttonStyle(.plain)
+                    .font(WidgetStyle.caption(11))
+                    .foregroundStyle(WidgetStyle.secondary)
+            }
+            .frame(maxWidth: 200, alignment: .leading)
+        } else {
+            Menu {
+                Button {
+                    choose("")
+                } label: {
+                    Label("Current Location", systemImage: "location")
+                }
+                if !places.isEmpty {
+                    Divider()
+                    ForEach(places, id: \.self) { place in
+                        Button {
+                            choose(place)
+                        } label: {
+                            if place.caseInsensitiveCompare(stored) == .orderedSame {
+                                Label(place, systemImage: "checkmark")
+                            } else {
+                                Text(place)
+                            }
+                        }
+                    }
+                }
+                Divider()
+                Button {
+                    draft = ""
+                    notFound = false
+                    adding = true
+                } label: {
+                    Label("Add a Place…", systemImage: "plus")
+                }
+                if !stored.isEmpty {
+                    Button(role: .destructive) {
+                        remove(stored)
+                    } label: {
+                        Label("Remove \(stored)", systemImage: "minus.circle")
+                    }
+                }
+            } label: {
+                HStack(spacing: 3) {
+                    Text(city.isEmpty ? "Current Location" : city)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(WidgetStyle.secondary)
+                }
+                .font(WidgetStyle.label(13))
+                .foregroundStyle(WidgetStyle.primary)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .disabled(context.isPreview)
+        }
+    }
+
+    /// The place stored on the widget, "" being the Mac's own location.
+    private var stored: String {
+        (picked ?? instance.config.string("city")).trimmingCharacters(in: .whitespaces)
+    }
+
+    private func choose(_ place: String) {
+        picked = place
+        selected = nil
+        WidgetWriter.write(instance) { $0.set("city", .string(place)) }
+        guard !place.isEmpty else { return }
+        Task { await WeatherService.shared.setLocation(city: place) }
+    }
+
+    /// Saved only once the name is found as a place, so the list never holds
+    /// a typo that shows nothing.
+    private func add() {
+        let place = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !place.isEmpty else { return }
+        Task {
+            guard await WeatherService.shared.resolves(city: place) else {
+                notFound = true
+                return
+            }
+            var list = places
+            if !list.contains(where: { $0.caseInsensitiveCompare(place) == .orderedSame }) {
+                list.append(place)
+            }
+            savedPlaces = list
+            WidgetWriter.write(instance) { $0.set("places", .list(list.map { .string($0) })) }
+            adding = false
+            draft = ""
+            notFound = false
+            choose(place)
+        }
+    }
+
+    private func remove(_ place: String) {
+        let list = places.filter { $0.caseInsensitiveCompare(place) != .orderedSame }
+        savedPlaces = list
+        WidgetWriter.write(instance) { $0.set("places", .list(list.map { .string($0) })) }
+        choose(list.first ?? "")
     }
 
     /// Big figure with a lighter degree mark, as on the tile.
