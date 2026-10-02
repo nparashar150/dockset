@@ -192,6 +192,8 @@ struct BatteryTile: View {
         var level: Double
         var charging: Bool
         var present: Bool
+        /// The service's own words for it; nil for the library's sample.
+        var status: String? = nil
     }
 
     private func reading(_ kind: BatteryDeviceKind) -> Reading {
@@ -206,12 +208,13 @@ struct BatteryTile: View {
         guard let device = BatteryMetrics.shared.device(kind), device.present else {
             return Reading(level: 0, charging: false, present: false)
         }
-        return Reading(level: device.level, charging: device.charging, present: true)
+        return Reading(level: device.level, charging: device.charging, present: true,
+                       status: device.status)
     }
 
     private func caption(_ reading: Reading) -> String {
         guard reading.present else { return "Not connected" }
-        return reading.charging ? "Charging" : "On battery"
+        return reading.status ?? (reading.charging ? "Charging" : "On battery")
     }
 
     @ViewBuilder

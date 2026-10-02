@@ -204,10 +204,40 @@ struct SettingsView: View {
                        selection: $state.customDock.profileID, allowsNone: false)
                 .disabled(state.setup == .macOSDockOnly)
 
-            layoutList(.macOSDock, title: "Apple Dock",
-                       selection: $state.macOSDock.profileID, allowsNone: true)
+            // Apple's Dock, folded away: saved layouts for it, writing them
+            // back and putting the original back are tools a few people use
+            // a lot and most never touch, and laid open they made the pane
+            // read as the Dock's settings rather than the shelf's.
+            Section {
+                DisclosureGroup("Apple Dock", isExpanded: $showsAppleDock) {
+                    appleDockTools
+                }
+            }
 
             Section {
+                HStack {
+                    Button("Back Up…", action: onBackUp)
+                        .disabled(state.profiles.isEmpty)
+                    Button("Restore…", action: onRestore)
+                }
+            } header: {
+                Text("Backup")
+            } footer: {
+                Text("A backup holds your layouts, their items and widget settings, not the apps or files they point to. Restoring adds to what you have rather than replacing it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    @State private var showsAppleDock = false
+
+    @ViewBuilder private var appleDockTools: some View {
+            layoutList(.macOSDock, title: "Layouts",
+                       selection: $state.macOSDock.profileID, allowsNone: true)
+
+            Group {
                 Toggle(isOn: Binding(get: { state.hideAppleDock }, set: onSetHideAppleDock)) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Hide Apple's Dock")
@@ -250,22 +280,6 @@ struct SettingsView: View {
                     }
                 }
             }
-
-            Section {
-                HStack {
-                    Button("Back Up…", action: onBackUp)
-                        .disabled(state.profiles.isEmpty)
-                    Button("Restore…", action: onRestore)
-                }
-            } header: {
-                Text("Backup")
-            } footer: {
-                Text("A backup holds your layouts, their items and widget settings, not the apps or files they point to. Restoring adds to what you have rather than replacing it.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
     }
 
     @ViewBuilder
@@ -354,8 +368,12 @@ struct SettingsView: View {
                     .help(state.setup == .macOSDockOnly
                           ? "With no shelf on screen, this is the only way to reach Docket."
                           : "The shelf's own menu can still reach Settings with this off.")
-                Picker("Show next to it", selection: $state.menuBar.label) {
-                    ForEach(MenuBarLabelMode.allCases, id: \.self) { Text(title($0)).tag($0) }
+                // Which layout's name sits beside the icon. Only asked when
+                // there is an icon to sit beside.
+                if state.menuBar.showIcon {
+                    Picker("Name beside it", selection: $state.menuBar.label) {
+                        ForEach(MenuBarLabelMode.allCases, id: \.self) { Text(title($0)).tag($0) }
+                    }
                 }
             }
 
@@ -493,9 +511,14 @@ struct SettingsView: View {
                     subtitled("Leave a sliver when hidden", "So you can see where it is.")
                 }
             }
-            Toggle(isOn: $state.customDock.hideWhenMacOSDockAppears) {
-                subtitled("Make way for Apple's Dock",
-                          "When both are on one edge, reaching for one uncovers the other.")
+            // Only a question when the shelf and Apple's Dock share an edge;
+            // anywhere else the answer cannot make a difference, and a switch
+            // that does nothing is the clutter this pane is cutting.
+            if inUse().position == SystemDockSettings.shared.position {
+                Toggle(isOn: $state.customDock.hideWhenMacOSDockAppears) {
+                    subtitled("Make way for Apple's Dock",
+                              "It shares this edge, so reaching for one uncovers the other.")
+                }
             }
             Toggle(isOn: $state.customDock.useAsDesktopWidget) {
                 subtitled("Stay behind windows", "Sit on the desktop like a widget.")

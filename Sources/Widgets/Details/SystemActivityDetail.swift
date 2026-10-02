@@ -150,7 +150,7 @@ struct SystemActivityDetail: View {
         case .battery:
             let mac = context.isPreview ? nil : BatteryMetrics.shared.device(.mac)
             guard let mac, mac.present else { return ("Mac battery", "Not reported") }
-            return ("Mac battery", mac.charging ? "Charging" : "On battery")
+            return ("Mac battery", mac.status)
         }
     }
 

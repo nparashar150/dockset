@@ -13,9 +13,20 @@ struct BatteryDevice: Identifiable, Sendable {
     /// 0...1. Meaningless unless `present`.
     var level: Double
     var charging: Bool
+    /// On mains power. Not the same as charging: a full battery on the
+    /// adapter reports not charging, and was shown as "On battery" while the
+    /// menu bar beside it showed the plug.
+    var pluggedIn = false
     /// False = nothing reported this battery; render it as unavailable rather
     /// than as an empty one.
     var present: Bool
+
+    /// What the device is doing, in words, everywhere it is said.
+    var status: String {
+        if charging { return "Charging" }
+        if pluggedIn { return level >= 0.99 ? "Charged" : "On power" }
+        return "On battery"
+    }
 
     static func absent(_ kind: BatteryDeviceKind) -> BatteryDevice {
         BatteryDevice(id: kind.rawValue, kind: kind, level: 0, charging: false, present: false)
@@ -86,6 +97,7 @@ final class BatteryMetrics {
                 kind: .mac,
                 level: min(Double(current) / Double(capacity), 1),
                 charging: description[kIOPSIsChargingKey as String] as? Bool ?? false,
+                pluggedIn: description[kIOPSPowerSourceStateKey as String] as? String == kIOPSACPowerValue,
                 present: true
             )
         }
