@@ -268,8 +268,9 @@ struct WidgetSettingsSections: View {
                                 .map { $0.trimmingCharacters(in: .whitespaces) }
                                 .filter { !$0.isEmpty }
                             // An empty field is a half-finished edit, not a
-                            // request for a widget with nothing in it.
-                            guard !list.isEmpty else { return }
+                            // request for a widget with nothing in it -
+                            // except for names, where none is the default.
+                            guard !list.isEmpty || key == "names" else { return }
                             write(instance) { $0.set(key, .list(list.map { .string($0) })) }
                         }),
                         prompt: Text(Self.prompt(key)))
@@ -315,6 +316,13 @@ struct WidgetSettingsSections: View {
         "text": "Note",
         "zone": "Time zone",
         "symbols": "Symbols",
+        "trackAmounts": "Log amounts",
+        "drinkSize": "Drink size",
+        "goal": "Daily goal",
+        "refresh": "Refresh every",
+        "hideWhenClosed": "Hide when the players are closed",
+        "names": "Custom names",
+        "reminders": "Notify when a drink is due",
     ]
 
     static func label(_ key: String) -> String {
@@ -332,22 +340,37 @@ struct WidgetSettingsSections: View {
     }
 
     static func prompt(_ key: String) -> String {
-        key == "city" ? "Current location" : ""
+        switch key {
+        case "city": "Current location"
+        case "names": "AAPL=Apple"
+        default: ""
+        }
     }
 
     static func range(_ key: String) -> ClosedRange<Double> {
         switch key {
         case "duration": 60...14_400
         case "skip": 5...60
+        case "drinkSize": 50...1_000
+        case "goal": 500...5_000
+        case "refresh": 1...60
         default: 0...1_000
         }
     }
 
     static func step(_ key: String) -> Double {
-        key == "duration" ? 300 : 5
+        switch key {
+        case "duration": 300
+        case "drinkSize": 50
+        case "goal": 250
+        case "refresh": 1
+        default: 5
+        }
     }
 
     static func format(_ key: String, _ value: Double) -> String {
+        if key == "drinkSize" || key == "goal" { return "\(Int(value)) mL" }
+        if key == "refresh" { return "\(Int(value)) min" }
         guard key == "duration" else { return "\(Int(value))s" }
         let minutes = Int(value) / 60
         return minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"

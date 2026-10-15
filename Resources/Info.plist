@@ -15,7 +15,7 @@
 	<key>NSHumanReadableCopyright</key><string></string>
 	<key>NSCalendarsFullAccessUsageDescription</key><string>Docket shows your upcoming events in a Dock widget.</string>
 	<key>NSRemindersFullAccessUsageDescription</key><string>Docket shows and completes your reminders from a Dock widget.</string>
-	<key>NSAppleEventsUsageDescription</key><string>Docket controls music playback from a Dock widget.</string>
+	<key>NSAppleEventsUsageDescription</key><string>Docket controls music playback from a Dock widget, and asks Finder to empty the Trash when you choose Empty Trash.</string>
 	<key>NSLocationWhenInUseUsageDescription</key><string>Docket uses your location for the weather widget.</string>
 </dict>
 </plist>

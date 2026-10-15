@@ -126,6 +126,7 @@ public enum PaletteColor: String, Codable, Sendable, CaseIterable {
 
 public enum PaperColor: String, Codable, Sendable, CaseIterable {
     case yellow, orange, pink, purple, blue, green, graphite
+    case white, black, translucent
 
     public var hex: String {
         switch self {
@@ -136,10 +137,22 @@ public enum PaperColor: String, Codable, Sendable, CaseIterable {
         case .blue: "#96C7F5"
         case .green: "#ADD985"
         case .graphite: "#CFCCC2"
+        case .white: "#F7F6F2"
+        case .black: "#1C1C1E"
+        // The shelf's own card shows through; see `isTranslucent`.
+        case .translucent: "#00000000"
         }
     }
 
-    public static let picker: [PaperColor] = [.yellow, .orange, .pink, .purple, .blue, .green]
+    /// No paper at all: the note is written on the widget card itself.
+    public var isTranslucent: Bool { self == .translucent }
+
+    /// Whether the note needs light ink. Everything else is a light swatch in
+    /// both appearances and keeps a fixed dark ink.
+    public var needsLightInk: Bool { self == .black || self == .translucent }
+
+    public static let picker: [PaperColor] = [.yellow, .orange, .pink, .purple, .blue, .green,
+                                              .white, .black, .translucent]
 }
 
 public enum MetricColor {
@@ -456,19 +469,14 @@ public struct DockProfile: Codable, Hashable, Identifiable, Sendable {
     public var items: [DockItem]
     /// Travels with a customDock profile; ignored for macOSDock profiles.
     public var scale: Double
-    /// Reserved, and read by nothing yet.
-    ///
-    /// Both are groundwork for switching profiles without the menu bar: a
-    /// global hotkey, and a Focus filter that changes the shelf when a Focus
-    /// turns on. They are carried through save, restore and duplicate so a
-    /// setup made today survives into the build that honours them, and
-    /// `duplicateProfile` deliberately drops the hotkey, since two profiles
-    /// must never claim one key combination.
-    ///
-    /// Kept rather than removed because the plan for them is written down and
-    /// the modelling is the cheap half. Anything else stored and unread has
-    /// been deleted rather than left to look like an oversight.
+    /// A global hot key that switches to this layout; see `ProfileHotkeys`.
+    /// `duplicateProfile` deliberately drops it, since two profiles must
+    /// never claim one key combination.
     public var shortcut: KeyCombo?
+    /// Reserved, and read by nothing yet: groundwork for a Focus filter that
+    /// changes the shelf when a Focus turns on. Carried through save, restore
+    /// and duplicate so a setup made today survives into the build that
+    /// honours it.
     public var focusFilterID: String?
 
     /// Decodes item by item, dropping any it cannot read.
@@ -844,6 +852,11 @@ public struct PersistedState: Codable, Sendable {
 
     public func profiles(of kind: ProfileKind) -> [DockProfile] {
         profiles.filter { $0.kind == kind }
+    }
+
+    /// Every layout that has a hot key, keyed by layout.
+    public var shortcuts: [UUID: KeyCombo] {
+        Dictionary(uniqueKeysWithValues: profiles.compactMap { p in p.shortcut.map { (p.id, $0) } })
     }
 
     public var activeCustomProfile: DockProfile? { profile(customDock.profileID) }

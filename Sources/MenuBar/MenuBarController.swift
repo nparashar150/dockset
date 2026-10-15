@@ -159,8 +159,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     // MARK: Actions
 
     @objc private func selectProfile(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? UUID,
-              let profile = app.state.profile(id) else { return }
+        guard let id = sender.representedObject as? UUID else { return }
+        switchTo(id)
+    }
+
+    /// Everything choosing a layout from this menu does, for the layout hot
+    /// keys to do the same.
+    func switchTo(_ id: UUID) {
+        guard let profile = app.state.profile(id) else { return }
         app.select(profile)
         refreshButton()
         onShelfSettingsChanged?()

@@ -54,7 +54,7 @@ struct StockTile: View {
         }
         .task(id: symbol) {
             guard !context.isPreview else { return }
-            StockService.shared.track([symbol])
+            StockService.shared.track([symbol], every: StockSettings.interval(instance.config))
         }
     }
 
@@ -161,7 +161,7 @@ struct StockTile: View {
     }
 
     private func tickerText(_ size: CGFloat) -> some View {
-        Text(symbol)
+        Text(StockSettings.label(symbol, instance.config))
             .font(WidgetStyle.label(size))
             .foregroundStyle(WidgetStyle.primary)
     }

@@ -134,6 +134,7 @@ final class SettingsWindow: HostedWindow {
                 onRenameProfile: { app.renameProfile($0, to: $1) },
                 onDuplicateProfile: { if let id = $0 { app.duplicateProfile(id) } },
                 onDeleteProfile: { if let id = $0 { app.deleteProfile(id) } },
+                onSetShortcut: { app.setShortcut($1, for: $0) },
                 lastError: app.lastError,
                 onClearError: { app.clearError() },
                 onRestoreOriginalDock: { Task { await app.restoreOriginalDock() } },

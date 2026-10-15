@@ -1,22 +1,20 @@
 import Foundation
 import SwiftUI
 
-/// The hydration reminder in wall-clock terms, plus a button big enough to
-/// press without aiming at it.
-///
-/// The widget stores two things and only two: how long a cycle is
-/// (`duration`) and when the last drink was logged (`lastDrink`). There is no
-/// count of glasses, no daily goal and no log - one timestamp is overwritten
-/// by the next - so this panel draws no tally, no goal ring and no week's
-/// chart. Inventing any of them would be inventing the data behind them.
+/// The hydration reminder in wall-clock terms, the day's drinks, and a button
+/// big enough to press without aiming at it.
 ///
 /// What it can say that the tile cannot: the clock time the next drink is due
-/// at rather than a countdown to it, when the last one actually went in, the
-/// interval those two are separated by, and - the tile's blind spot, since its
-/// countdown floors at 0:00 - how long a drink has been overdue.
+/// at rather than a countdown to it, when the last one went in, how long a
+/// drink has been overdue (the tile's countdown floors at 0:00), and the
+/// `HydrationLog`: today against the goal, the week behind it, and today's
+/// drinks one by one, each removable with an undo for the slip.
 struct HydrationDetail: View {
     var instance: WidgetInstance
     var context: WidgetContext
+
+    /// The last drink taken off the log, so a misclick can be put back.
+    @State private var removed: HydrationLog.Drink?
 
     var body: some View {
         // Seconds, to agree with the tile's own clock. It has to be a schedule
@@ -69,9 +67,138 @@ struct HydrationDetail: View {
                         .frame(width: 96)
                 }
 
+                today(now: now)
+
                 drinkButton
             }
         }
+    }
+
+    // MARK: Today
+
+    private var log: HydrationLog {
+        if context.isPreview {
+            let now = Date.now.timeIntervalSince1970
+            return HydrationLog(drinks: [.init(at: now - 7200, millilitres: 250),
+                                         .init(at: now - 3600, millilitres: 250)])
+        }
+        return HydrationLog(instance.config)
+    }
+
+    private var tracking: Bool { Hydration.trackingAmounts(instance.config) }
+
+    @ViewBuilder
+    private func today(now: Date) -> some View {
+        let drinks = log.drinks(on: now)
+        VStack(alignment: .leading, spacing: 8) {
+            if tracking {
+                let total = drinks.reduce(0) { $0 + $1.millilitres }
+                let goal = Hydration.goal(instance.config)
+                HStack(alignment: .firstTextBaseline) {
+                    Text("TODAY")
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(.white.opacity(0.6))
+                    Spacer()
+                    Text("\(Int(total)) of \(Int(goal)) mL")
+                        .font(WidgetStyle.label(12))
+                        .foregroundStyle(WidgetStyle.primary)
+                        .monospacedDigit()
+                }
+                TickMeter(fraction: min(1, total / goal))
+                week(now: now, goal: goal)
+            } else {
+                Text(drinks.count == 1 ? "1 drink today" : "\(drinks.count) drinks today")
+                    .font(WidgetStyle.label(12))
+                    .foregroundStyle(WidgetStyle.primary)
+            }
+            // The latest few, newest first: the one most likely to be a
+            // misclick is the one just logged.
+            ForEach(Array(drinks.suffix(4).reversed()), id: \.self) { drink in
+                HStack {
+                    Text(clock(Date(timeIntervalSince1970: drink.at)))
+                        .monospacedDigit()
+                    if drink.millilitres > 0 {
+                        Text("\(Int(drink.millilitres)) mL")
+                            .foregroundStyle(.white.opacity(0.7))
+                    }
+                    Spacer()
+                    Button {
+                        remove(drink)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove this drink")
+                    .accessibilityLabel("Remove drink at \(clock(Date(timeIntervalSince1970: drink.at)))")
+                }
+                .font(WidgetStyle.caption(12))
+                .foregroundStyle(WidgetStyle.primary)
+            }
+            if let removed {
+                Button("Undo removal") { restore(removed) }
+                    .buttonStyle(.plain)
+                    .font(WidgetStyle.label(11))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(.white.opacity(0.14)))
+            }
+        }
+        .padding(10)
+        .glassPane(cornerRadius: 10)
+    }
+
+    /// Seven days, a bar each, today last, with the goal as the top.
+    private func week(now: Date, goal: Double) -> some View {
+        let totals = log.totals(endingOn: now)
+        return HStack(alignment: .bottom, spacing: 4) {
+            ForEach(totals.indices, id: \.self) { index in
+                let fraction = min(1, totals[index] / goal)
+                VStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(index == totals.count - 1 ? accent : accent.opacity(0.55))
+                        .frame(height: max(2, 28 * fraction))
+                }
+                .frame(maxWidth: .infinity, maxHeight: 28)
+                .background(RoundedRectangle(cornerRadius: 2).fill(.white.opacity(0.06)))
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Last seven days")
+        .accessibilityValue(totals.map { "\(Int($0)) mL" }.joined(separator: ", "))
+    }
+
+    private func remove(_ drink: HydrationLog.Drink) {
+        guard !context.isPreview else { return }
+        WidgetWriter.write(instance) { config in
+            var log = HydrationLog(config)
+            log.remove(drink)
+            config.set(HydrationLog.key, log.value)
+        }
+        removed = drink
+        relayout()
+    }
+
+    /// Back into the log only: the countdown is not rewound, because a later
+    /// drink may have moved it since.
+    private func restore(_ drink: HydrationLog.Drink) {
+        guard !context.isPreview else { return }
+        WidgetWriter.write(instance) { config in
+            var log = HydrationLog(config)
+            log.add(drink)
+            config.set(HydrationLog.key, log.value)
+        }
+        removed = nil
+        relayout()
+    }
+
+    /// The list changes the panel's height, and the panel is otherwise sized
+    /// once as it opens.
+    private func relayout() {
+        Task { @MainActor in WidgetDetailWindow.shared.relayout() }
     }
 
     // MARK: Action
@@ -154,9 +281,9 @@ struct HydrationDetail: View {
 
     private func drink() {
         guard !context.isPreview else { return }
-        WidgetWriter.write(instance) { config in
-            config.set("lastDrink", .number(Date.now.timeIntervalSince1970))
-        }
+        Hydration.drink(instance)
+        removed = nil
+        relayout()
     }
 
     private var accent: Color {

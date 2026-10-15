@@ -46,6 +46,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.onShelfSettingsChanged = { [weak self] in self?.shelf.refresh() }
         state.onMenuBarSettingsChanged = { [weak self] in self?.menuBar.refreshButton() }
         state.onAppearanceChanged = { [weak self] in self?.applyAppearance() }
+        ProfileHotkeys.shared.onFire = { [weak self] id in self?.menuBar.switchTo(id) }
+        ProfileHotkeys.shared.apply(state.shortcuts)
+        state.onShortcutsChanged = { ProfileHotkeys.shared.apply($0) }
 
         // The Focus Timer runs through a shared provider the widgets read,
         // and Settings edits the persisted copy. Neither knew about the

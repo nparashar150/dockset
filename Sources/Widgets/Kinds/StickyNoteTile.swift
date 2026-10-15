@@ -11,14 +11,23 @@ struct StickyNoteTile: View {
     var instance: WidgetInstance
     var context: WidgetContext
 
-    /// Every `PaperColor` is a light swatch in both appearances, so the ink is
+    /// The coloured swatches are light in both appearances, so their ink is
     /// deliberately fixed dark rather than semantic - `Color.primary` would go
     /// white in dark mode and vanish into the paper.
-    private static let ink = Color(hex: "#1C1C1E")
+    private static let darkInk = Color(hex: "#1C1C1E")
 
-    private var paper: Color {
-        let stored = instance.config.string("color", default: "yellow")
-        return WidgetStyle.paper(PaperColor(rawValue: stored) ?? .yellow)
+    private var color: PaperColor {
+        PaperColor(rawValue: instance.config.string("color", default: "yellow")) ?? .yellow
+    }
+
+    /// Black paper takes white ink; no paper takes the card's own, which
+    /// follows the appearance like every other tile's text.
+    private var ink: Color {
+        switch color {
+        case .black: .white
+        case .translucent: WidgetStyle.primary
+        default: Self.darkInk
+        }
     }
 
     private var stored: String { instance.config.string("text") }
@@ -35,7 +44,7 @@ struct StickyNoteTile: View {
         // ink, one more line, and the text shrinks a little rather than
         // trailing off in an ellipsis inside 56pt of usable width.
         let column = context.position.isVertical
-        return WidgetSurface(fill: paper) {
+        return WidgetSurface(fill: color.isTranslucent ? nil : WidgetStyle.paper(color)) {
             // An empty note is blank paper, not a blank widget.
             //
             // There was no prompt here at all, on the reasoning that grey
@@ -50,7 +59,7 @@ struct StickyNoteTile: View {
             } else {
                 Text(text)
                 .font(.system(size: column ? 10 : 13, weight: .semibold))
-                .foregroundStyle(Self.ink)
+                .foregroundStyle(ink)
                 .multilineTextAlignment(.leading)
                 .lineLimit(column ? 5 : 4)
                 .minimumScaleFactor(column ? 0.8 : 1)
@@ -75,10 +84,10 @@ struct StickyNoteTile: View {
         VStack(alignment: .leading, spacing: column ? 5 : 7) {
             Image(systemName: "pencil.line")
                 .font(.system(size: column ? 11 : 13, weight: .semibold))
-                .foregroundStyle(Self.ink.opacity(0.28))
+                .foregroundStyle(ink.opacity(0.28))
             ForEach(0..<(column ? 2 : 2), id: \.self) { line in
                 Capsule()
-                    .fill(Self.ink.opacity(0.14))
+                    .fill(ink.opacity(0.14))
                     // The second line is shorter, the way a written one runs
                     // out. Equal lines read as a loading skeleton.
                     .frame(width: line == 0 ? nil : 34, height: 2)

@@ -35,6 +35,9 @@ public final class AppState {
             if state.timer != oldValue.timer {
                 onTimerChanged?(state.timer)
             }
+            if shortcuts != oldValue.shortcuts {
+                onShortcutsChanged?(shortcuts)
+            }
             // A panel open on a widget that has just left the shelf. Removing
             // one goes through the shelf's menu, the Settings list, a drag
             // off the shelf or a change of layout, and every one of them
@@ -57,6 +60,22 @@ public final class AppState {
     /// The Focus Timer settings, which the widgets read through their own
     /// shared provider rather than from here.
     @ObservationIgnored public var onTimerChanged: (@MainActor (TimerState) -> Void)?
+    /// Every layout's hot key, for the registry that listens for them.
+    @ObservationIgnored public var onShortcutsChanged: (@MainActor ([UUID: KeyCombo]) -> Void)?
+
+    public var shortcuts: [UUID: KeyCombo] { state.shortcuts }
+
+    /// Gives `profileID` a hot key, taking it from any layout that had it:
+    /// two layouts must never answer one combination.
+    public func setShortcut(_ combo: KeyCombo?, for profileID: UUID) {
+        for index in state.profiles.indices {
+            if state.profiles[index].id == profileID {
+                state.profiles[index].shortcut = combo
+            } else if combo != nil, state.profiles[index].shortcut == combo {
+                state.profiles[index].shortcut = nil
+            }
+        }
+    }
 
     /// Ticks once a second. Widgets read this rather than each starting a
     /// timer of their own - one timer for the whole shelf.

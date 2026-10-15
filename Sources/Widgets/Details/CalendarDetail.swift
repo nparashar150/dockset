@@ -144,7 +144,7 @@ struct CalendarDetail: View {
                 // Time first, calendar second: two events at 10:30 are told
                 // apart by the calendar, never the other way round.
                 ForEach(shownTimed) { event in
-                    row(event, detail: "\(clock(event.start)) · \(event.calendar)")
+                    row(event, detail: "\(when(event)) · \(event.calendar)")
                 }
             }
             if !shownAllDay.isEmpty {
@@ -185,6 +185,11 @@ struct CalendarDetail: View {
                     .foregroundStyle(.white.opacity(0.7))
             }
             Spacer(minLength: 0)
+            // Any call still to come, not only the imminent one the tile
+            // offers: the panel is where you go to look ahead.
+            if let link = event.meeting, !event.isPast(context.now) {
+                JoinButton(url: link, enabled: !context.isPreview)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -321,8 +326,8 @@ struct CalendarDetail: View {
         load()
     }
 
-    private func clock(_ date: Date) -> String {
-        date.formatted(date: .omitted, time: .shortened)
+    private func when(_ event: DayEvent) -> String {
+        EventTime.label(start: event.start, end: event.end, now: context.now)
     }
 }
 
@@ -349,6 +354,7 @@ private struct DayEvent: Identifiable, Hashable {
     var isAllDay: Bool
     var calendar: String
     var color: Color
+    var meeting: URL?
 
     init?(_ event: EKEvent) {
         guard let start = event.startDate else { return nil }
@@ -363,6 +369,7 @@ private struct DayEvent: Identifiable, Hashable {
         self.isAllDay = event.isAllDay
         self.calendar = event.calendar?.title ?? ""
         self.color = CalendarSource.tint(event.calendar)
+        self.meeting = MeetingLink.find(in: [event.url?.absoluteString, event.location, event.notes])
     }
 
     /// All-day entries never go grey: they are true for the whole day.

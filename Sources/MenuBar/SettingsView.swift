@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Observation
+import ServiceManagement
 
 /// Which Settings tab is showing.
 ///
@@ -56,6 +57,8 @@ struct SettingsView: View {
     var onRenameProfile: (UUID, String) -> Void
     var onDuplicateProfile: (UUID?) -> Void
     var onDeleteProfile: (UUID?) -> Void
+    /// Sets or clears a layout's hot key; see `AppState.setShortcut`.
+    var onSetShortcut: (UUID, KeyCombo?) -> Void
     /// The last Dock-apply failure, and a way to be rid of it. Read rather
     /// than bound because it belongs to AppState and this view holds only the
     /// persisted state.
@@ -304,6 +307,8 @@ struct SettingsView: View {
                     active: selection.wrappedValue == profile.id,
                     onUse: { selection.wrappedValue = profile.id },
                     onDuplicate: { onDuplicateProfile(profile.id) },
+                    shortcut: profile.shortcut,
+                    onShortcut: { onSetShortcut(profile.id, $0) },
                     // The shelf has to point at something: deleting its last
                     // layout would leave it empty with no way back.
                     onDelete: kind == .customDock && mine.count <= 1
@@ -357,6 +362,10 @@ struct SettingsView: View {
                     }
                 }
                 .padding(.vertical, 2)
+            }
+
+            Section("Startup") {
+                LaunchAtLoginToggle()
             }
 
             Section("Menu Bar") {
@@ -970,6 +979,9 @@ private struct LayoutRow<Preview: View>: View {
     let active: Bool
     let onUse: () -> Void
     var onDuplicate: (() -> Void)?
+    var shortcut: KeyCombo?
+    /// Nil for a row that is not a layout, which then offers no hot key.
+    var onShortcut: ((KeyCombo?) -> Void)?
     var onDelete: (() -> Void)?
     @ViewBuilder var preview: () -> Preview
 
@@ -1019,6 +1031,10 @@ private struct LayoutRow<Preview: View>: View {
 
             preview()
 
+            if let onShortcut {
+                ShortcutRecorder(combo: shortcut, onChange: onShortcut)
+            }
+
             if onDuplicate != nil || onDelete != nil {
                 Menu {
                     if editable { Button("Rename") { renaming = true } }
@@ -1032,5 +1048,104 @@ private struct LayoutRow<Preview: View>: View {
                 .fixedSize()
             }
         }
+    }
+}
+
+/// Records a layout's hot key: click, press the combination.
+///
+/// Escape cancels and anything with fewer than two modifiers is refused with a
+/// beep, since a single modifier would take Command-1 and the like away from
+/// whatever app is in front.
+private struct ShortcutRecorder: View {
+    var combo: KeyCombo?
+    var onChange: (KeyCombo?) -> Void
+
+    @State private var monitor: Any?
+
+    private var recording: Bool { monitor != nil }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Button(recording ? "Type shortcut…" : combo?.display ?? "Add Shortcut") {
+                recording ? stop() : start()
+            }
+            .controlSize(.small)
+            .help("A key combination that switches to this layout from anywhere. Use at least two of ⌃ ⌥ ⇧ ⌘.")
+            if combo != nil, !recording {
+                Button {
+                    onChange(nil)
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Remove shortcut")
+                .accessibilityLabel("Remove shortcut")
+            }
+        }
+        .onDisappear { stop() }
+    }
+
+    private func start() {
+        ProfileHotkeys.shared.paused = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if event.keyCode == 53 { // Escape
+                stop()
+            } else if let combo = KeyCombo(event) {
+                onChange(combo)
+                stop()
+            } else {
+                NSSound.beep()
+            }
+            return nil
+        }
+    }
+
+    private func stop() {
+        guard let monitor else { return }
+        NSEvent.removeMonitor(monitor)
+        self.monitor = nil
+        ProfileHotkeys.shared.paused = false
+    }
+}
+
+/// Open at login, read from and written to macOS rather than the state file.
+///
+/// The user can remove the login item in System Settings at any time, so a
+/// saved preference would drift from the truth. The status is re-read
+/// whenever the Settings window comes forward.
+private struct LaunchAtLoginToggle: View {
+    @State private var status = SMAppService.mainApp.status
+    @State private var failure: String?
+
+    var body: some View {
+        Toggle("Open at login", isOn: Binding(get: { status == .enabled }, set: { apply($0) }))
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+                status = SMAppService.mainApp.status
+            }
+        if status == .requiresApproval {
+            HStack {
+                Text("Allow Docket in Login Items to finish turning this on.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Open Login Items") { SMAppService.openSystemSettingsLoginItems() }
+                    .controlSize(.small)
+            }
+        }
+        if let failure {
+            Text(failure)
+                .font(.caption)
+                .foregroundStyle(.red)
+        }
+    }
+
+    private func apply(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+            failure = nil
+        } catch {
+            failure = error.localizedDescription
+        }
+        status = SMAppService.mainApp.status
     }
 }

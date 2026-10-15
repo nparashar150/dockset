@@ -23,6 +23,7 @@ struct BatteryDetail: View {
                 if let lead {
                     hero(lead)
                     TickMeter(fraction: lead.present ? lead.level : 0)
+                    if lead.kind == .mac, lead.present { macDetails }
                 }
                 // Quiet rows rather than glass cards with rings: a name, how
                 // it is doing and a number, one line each.
@@ -39,6 +40,49 @@ struct BatteryDetail: View {
         // The panel can list accessories the tile was never configured to
         // show, so it cannot rely on a tile having started the sampler.
         .onAppear { if !context.isPreview { BatteryMetrics.shared.start() } }
+    }
+
+    /// Condition, wear, time and power, refreshed every few seconds while the
+    /// panel is up. Fields the Mac does not report are left out rather than
+    /// shown as dashes, so a desktop or a battery still settling shows less
+    /// instead of a grid of blanks.
+    private var macDetails: some View {
+        TimelineView(.periodic(from: .now, by: 5)) { _ in
+            let details = context.isPreview
+                ? MacBatteryDetails(condition: "Normal", cycles: 212, maximumCapacity: 91,
+                                    minutesToEmpty: 312, watts: -8.4, adapterWatts: nil)
+                : MacBatteryDetails.read()
+            let chips = details.map(Self.chips) ?? []
+            if !chips.isEmpty {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 3),
+                          spacing: 8) {
+                    ForEach(chips, id: \.label) { StatChip(label: $0.label, value: $0.value) }
+                }
+            }
+        }
+    }
+
+    private static func chips(_ details: MacBatteryDetails) -> [(label: String, value: String)] {
+        var chips: [(label: String, value: String)] = []
+        if let condition = details.condition { chips.append(("Condition", condition)) }
+        if let capacity = details.maximumCapacity { chips.append(("Max capacity", "\(capacity)%")) }
+        if let cycles = details.cycles { chips.append(("Cycles", "\(cycles)")) }
+        if let minutes = details.minutesToFull {
+            chips.append(("Until full", duration(minutes)))
+        } else if let minutes = details.minutesToEmpty {
+            chips.append(("Time left", duration(minutes)))
+        }
+        // Under a tenth of a watt is a battery sitting full on the adapter,
+        // and "0.0 W" reads as a broken sensor.
+        if let watts = details.watts, abs(watts) >= 0.1 {
+            chips.append((watts > 0 ? "Charging at" : "Drawing", String(format: "%.1f W", abs(watts))))
+        }
+        if let adapter = details.adapterWatts { chips.append(("Adapter", "\(adapter) W")) }
+        return chips
+    }
+
+    private static func duration(_ minutes: Int) -> String {
+        minutes < 60 ? "\(minutes) min" : "\(minutes / 60) h \(minutes % 60) min"
     }
 
     /// The level as the card's colour. Charging reads as healthy whatever

@@ -178,3 +178,86 @@ extension BatteryMetrics {
         return device(kind)?.present == true
     }
 }
+
+// MARK: - Mac battery details
+
+/// What the battery panel adds under the Mac's level: its condition, how worn
+/// it is, how long it has left and how much power is moving.
+///
+/// Read only while the panel is open, off the smart-battery registry entry. It
+/// is a larger read than the level, and nothing on the shelf needs it once a
+/// second. Every field is optional: a desktop Mac has none of them, and a
+/// laptop leaves some unreported while it settles after waking.
+struct MacBatteryDetails: Sendable, Equatable {
+    /// "Normal" or "Service Recommended", in the words System Settings uses.
+    var condition: String?
+    var cycles: Int?
+    /// Full charge as a share of what the battery held new.
+    var maximumCapacity: Int?
+    var minutesToEmpty: Int?
+    var minutesToFull: Int?
+    /// Into the battery when positive, out of it when negative.
+    var watts: Double?
+    var adapterWatts: Int?
+
+    static func read() -> MacBatteryDetails? {
+        var details = MacBatteryDetails()
+        var isLaptop = false
+
+        if let blob = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
+           let sources = IOPSCopyPowerSourcesList(blob)?.takeRetainedValue() as? [CFTypeRef] {
+            for source in sources {
+                guard let description = IOPSGetPowerSourceDescription(blob, source)?
+                    .takeUnretainedValue() as? [String: Any],
+                      description[kIOPSTypeKey as String] as? String == kIOPSInternalBatteryType
+                else { continue }
+                isLaptop = true
+                // The power-source API calls a healthy battery "Good"; the
+                // Battery pane calls it "Normal", and that is the word people
+                // have seen.
+                if let health = description[kIOPSBatteryHealthKey as String] as? String {
+                    details.condition = health == "Good" ? "Normal" : "Service Recommended"
+                }
+                // -1 while macOS is still estimating; that is no estimate.
+                if let empty = description[kIOPSTimeToEmptyKey as String] as? Int, empty > 0 {
+                    details.minutesToEmpty = empty
+                }
+                if let full = description[kIOPSTimeToFullChargeKey as String] as? Int, full > 0 {
+                    details.minutesToFull = full
+                }
+            }
+        }
+        guard isLaptop else { return nil }
+
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        if service != 0 {
+            defer { IOObjectRelease(service) }
+            func int(_ key: String) -> Int? {
+                (IORegistryEntryCreateCFProperty(service, key as CFString, kCFAllocatorDefault, 0)?
+                    .takeRetainedValue() as? NSNumber)?.intValue
+            }
+            details.cycles = int("CycleCount")
+            // Nominal over design, not MaxCapacity: on Apple silicon the
+            // latter is already a percentage pinned near 100.
+            if let nominal = int("NominalChargeCapacity") ?? int("AppleRawMaxCapacity"),
+               let design = int("DesignCapacity"), design > 0 {
+                details.maximumCapacity = min(100, Int((Double(nominal) / Double(design) * 100).rounded()))
+            }
+            // Amperage is signed (negative discharging) and both are in
+            // milli-units. The registry stores a negative current as an
+            // unsigned 64-bit pattern on some models, hence the conversion.
+            if let amps = (IORegistryEntryCreateCFProperty(service, "Amperage" as CFString,
+                                                           kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? NSNumber)?.int64Value,
+               let volts = int("Voltage") {
+                let milliamps = Double(Int16(truncatingIfNeeded: amps))
+                details.watts = milliamps * Double(volts) / 1_000_000
+            }
+        }
+        if let adapter = IOPSCopyExternalPowerAdapterDetails()?.takeRetainedValue() as? [String: Any],
+           let watts = adapter[kIOPSPowerAdapterWattsKey as String] as? Int, watts > 0 {
+            details.adapterWatts = watts
+        }
+        return details
+    }
+}

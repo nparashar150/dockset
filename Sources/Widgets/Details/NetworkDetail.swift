@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Network said at length: the two rates the tile leads with, and under them
@@ -8,15 +9,16 @@ import SwiftUI
 /// second is a spike in an idle minute or the tail of a long download, and how
 /// the two directions relate. That is the whole reason this panel exists.
 ///
-/// Only what `NetworkMetrics` publishes: instantaneous rates and the last
-/// sixty one-second samples of each. The sampler sums every non-loopback link,
-/// so there is no interface to name, and it keeps rates rather than counters,
-/// so there is no session total to report. The averages and peaks below are
-/// read off the same history the chart draws - nothing here is a second
-/// source.
+/// The rates are what `NetworkMetrics` publishes: instantaneous figures and
+/// the last sixty one-second samples of each, summed over every link. It keeps
+/// rates rather than counters, so there is no session total to report. The
+/// averages and peaks are read off the same history the chart draws. Under
+/// them, the links that are up and their addresses, read as the panel opens.
 struct NetworkDetail: View {
     var instance: WidgetInstance
     var context: WidgetContext
+
+    @State private var interfaces: [NetworkInterface] = []
 
     var body: some View {
         // Deep teal, the colour of a line carrying something, with the
@@ -32,6 +34,71 @@ struct NetworkDetail: View {
                 // opened in the first seconds of the shelf's life honestly
                 // shows the rates alone until the history catches up.
                 if window >= 2 { history }
+
+                if !shownInterfaces.isEmpty { interfaceList }
+            }
+        }
+        .onAppear { readInterfaces() }
+        // The panel is hidden rather than torn down between openings, so
+        // appearing happens once; it becomes key every time it opens.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            readInterfaces()
+        }
+    }
+
+    /// Read after the panel has measured itself, so it is placed again once
+    /// the list is known.
+    private func readInterfaces() {
+        guard !context.isPreview else { return }
+        let now = NetworkInterface.active()
+        guard now != interfaces else { return }
+        interfaces = now
+        Task { @MainActor in WidgetDetailWindow.shared.relayout() }
+    }
+
+    // MARK: Interfaces
+
+    private var shownInterfaces: [NetworkInterface] {
+        context.isPreview
+            ? [NetworkInterface(id: "en0", name: "Wi-Fi", ipv4: "192.168.1.24",
+                                ipv6: "2001:db8::24", isPrimary: true)]
+            : interfaces
+    }
+
+    /// One row per link: its name, which one is carrying traffic, and its
+    /// addresses, selectable so they can be copied.
+    private var interfaceList: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach(shownInterfaces) { link in
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(link.name)
+                            .font(WidgetStyle.label(13))
+                            .foregroundStyle(WidgetStyle.primary)
+                        Text(link.id)
+                            .font(WidgetStyle.caption(11))
+                            .foregroundStyle(.white.opacity(0.5))
+                        if link.isPrimary {
+                            Text("In use")
+                                .font(.system(size: 9, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Capsule().fill(.white.opacity(0.18)))
+                        }
+                    }
+                    ForEach([link.ipv4, link.ipv6].compactMap(\.self), id: \.self) { address in
+                        Text(address)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.white.opacity(0.75))
+                            .textSelection(.enabled)
+                    }
+                }
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .glassPane(cornerRadius: 10)
             }
         }
     }
@@ -91,21 +158,21 @@ struct NetworkDetail: View {
     ///
     /// Floored at 1 KB/s so an idle minute stays pinned to the bottom of the
     /// frame: without a floor the scale collapses onto the noise and a few
-    /// stray bytes are drawn as a mountain range.
-    /// The minute as one mirrored row of bars: download rising from a centre
-    /// line, upload falling from it, a bar a second.
-    ///
-    /// Two lines on one chart were two shapes to compare; one mirrored shape
-    /// is the traffic itself, with its direction as up and down.
+    /// stray bytes are drawn as a mountain range. Download and upload are two
+    /// filled curves on that one scale, each in its own colour.
     private var history: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(window >= NetworkMetrics.historyLength ? "Last minute" : "Last \(window)s")
                 .font(WidgetStyle.caption(10))
                 .foregroundStyle(.white.opacity(0.45))
-            TickHistory(samples: showsDownload ? downloadHistory : uploadHistory,
-                        mirror: showsDownload && showsUpload ? uploadHistory : nil,
-                        range: scale)
-                .frame(height: 64)
+            AreaHistory(series: [
+                            showsDownload ? AreaHistory.Series(name: "Down", samples: downloadHistory,
+                                                               color: Color(hex: MetricColor.netDownload)) : nil,
+                            showsUpload ? AreaHistory.Series(name: "Up", samples: uploadHistory,
+                                                             color: Color(hex: MetricColor.netUpload)) : nil,
+                        ].compactMap(\.self),
+                        range: scale, length: NetworkMetrics.historyLength)
+                .frame(height: 96)
         }
     }
 

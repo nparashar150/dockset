@@ -65,7 +65,9 @@ public enum WidgetCatalog {
               variants: [], supportsCompact: false, selfContained: true),
 
         Entry(kind: .hydration, name: "Hydration", category: .reminders,
-              defaults: c(["duration": .number(2700)]),
+              defaults: c(["duration": .number(2700), "trackAmounts": .bool(true),
+                           "drinkSize": .number(250), "goal": .number(2000),
+                           "reminders": .bool(false)]),
               variants: [], supportsCompact: false, selfContained: true),
 
         // No `showCallButton`: read by nothing. A join-call affordance needs
@@ -97,7 +99,7 @@ public enum WidgetCatalog {
                            "spotify": .bool(true), "apple": .bool(true),
                            // Falls back to video playing in a scriptable
                            // browser tab when no native player has anything.
-                           "browsers": .bool(true)]),
+                           "browsers": .bool(true), "hideWhenClosed": .bool(false)]),
               variants: [("Full", ["mini": .bool(false)]), ("Mini", ["mini": .bool(true)])],
               supportsCompact: false, selfContained: true),
 
@@ -144,13 +146,15 @@ public enum WidgetCatalog {
         Entry(kind: .stock, name: "Stock", category: .stocks,
               defaults: c(["symbol": .string("AAPL"),
                            "symbols": .list([.string("AAPL")]),
-                           "chart": .bool(true)]),
+                           "chart": .bool(true), "refresh": .number(5),
+                           "names": .list([])]),
               variants: [], supportsCompact: true, selfContained: true),
 
         // No `chart` here, unlike Stock: this tile is a list of rows and has
         // never drawn one, so the switch had nothing to switch.
         Entry(kind: .watchlist, name: "Watchlist", category: .stocks,
-              defaults: c(["symbols": .list([.string("AAPL"), .string("MSFT"), .string("NVDA")])]),
+              defaults: c(["symbols": .list([.string("AAPL"), .string("MSFT"), .string("NVDA")]),
+                           "refresh": .number(5), "names": .list([])]),
               variants: [], supportsCompact: false, selfContained: true),
 
         Entry(kind: .weather, name: "Weather", category: .weather,
@@ -227,6 +231,8 @@ public enum WidgetCatalog {
         // wide layout only, so in mini these were five controls that
         // accepted a change and produced none. Offering an option that does
         // nothing is the same defect as offering one nothing reads.
+        case (.hydration, "drinkSize"), (.hydration, "goal"):
+            config.bool("trackAmounts", default: true)
         case (.music, "previous"), (.music, "next"), (.music, "backward"),
              (.music, "forward"), (.music, "skip"):
             !config.bool("mini")

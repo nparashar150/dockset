@@ -23,6 +23,19 @@ final class SystemMetrics {
     /// cost - they were being computed and thrown away.
     private(set) var diskFree: Int64 = 0
     private(set) var diskTotal: Int64 = 0
+    /// Busy fraction of each logical core over the last second, in the
+    /// kernel's order, which puts efficiency cores first on Apple silicon.
+    private(set) var cores: [Double] = []
+    /// What the kernel thinks of memory, which is what decides whether a
+    /// high percentage matters: 80% used at normal pressure is a Mac doing
+    /// its job, at critical it is swapping.
+    private(set) var pressure: MemoryPressure = .normal
+    private(set) var swapUsed: Int64 = 0
+    private(set) var swapTotal: Int64 = 0
+
+    enum MemoryPressure: String {
+        case normal = "Normal", warning = "Elevated", critical = "Critical"
+    }
 
     /// Rolling history so widgets can draw a graph rather than only a number.
     /// Most recent last; grows to `historyLength` then slides.
@@ -59,6 +72,7 @@ final class SystemMetrics {
     /// samples says anything about what the machine is doing now.
     @ObservationIgnored private var lastTicks: (busy: UInt64, total: UInt64)?
     @ObservationIgnored private var diskCountdown = 0
+    @ObservationIgnored private var lastCoreTicks: [(busy: UInt64, total: UInt64)] = []
 
     private init() {}
 
@@ -81,11 +95,14 @@ final class SystemMetrics {
         // Drop the baseline: the next start() must measure a fresh interval,
         // not the whole idle gap since we were stopped.
         lastTicks = nil
+        lastCoreTicks = []
     }
 
     private func sample() {
         sampleCPU()
+        sampleCores()
         sampleMemory()
+        sampleSwap()
         // Disk moves in megabytes-per-minute, not per-second. Every 30s is plenty.
         if diskCountdown <= 0 {
             sampleDisk()
@@ -119,6 +136,40 @@ final class SystemMetrics {
         cpu = min(Double(deltaBusy) / Double(deltaTotal), 1)
     }
 
+    /// The same tick arithmetic as `sampleCPU`, per core. The kernel hands
+    /// back an array it allocated in our address space, which has to be
+    /// given back on every path.
+    private func sampleCores() {
+        var count: natural_t = 0
+        var info: processor_info_array_t?
+        var infoCount: mach_msg_type_number_t = 0
+        guard host_processor_info(mach_host_self(), PROCESSOR_CPU_LOAD_INFO,
+                                  &count, &info, &infoCount) == KERN_SUCCESS,
+              let info else { return }
+        defer {
+            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: info),
+                          vm_size_t(Int(infoCount) * MemoryLayout<integer_t>.stride))
+        }
+
+        let stride = Int(CPU_STATE_MAX)
+        var ticks: [(busy: UInt64, total: UInt64)] = []
+        for core in 0 ..< Int(count) {
+            let base = core * stride
+            func at(_ state: Int32) -> UInt64 { UInt64(UInt32(bitPattern: info[base + Int(state)])) }
+            let busy = at(CPU_STATE_USER) + at(CPU_STATE_SYSTEM) + at(CPU_STATE_NICE)
+            ticks.append((busy, busy + at(CPU_STATE_IDLE)))
+        }
+        defer { lastCoreTicks = ticks }
+        // A first sample, or a core count that changed under us, is only a
+        // baseline.
+        guard lastCoreTicks.count == ticks.count else { return }
+        cores = zip(ticks, lastCoreTicks).map { now, last in
+            let total = now.total >= last.total ? now.total - last.total : 0
+            let busy = now.busy >= last.busy ? now.busy - last.busy : 0
+            return total > 0 ? min(Double(busy) / Double(total), 1) : 0
+        }
+    }
+
     // MARK: - Memory
 
     private func sampleMemory() {
@@ -137,6 +188,23 @@ final class SystemMetrics {
         // including them would read ~100% on any machine that has been up a while.
         let pages = UInt64(info.active_count) + UInt64(info.wire_count) + UInt64(info.compressor_page_count)
         memory = min(Double(pages * Self.pageSize) / physical, 1)
+    }
+
+    /// Pressure and swap both come from sysctl and both are optional: a
+    /// failed read keeps the last answer.
+    private func sampleSwap() {
+        var level: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        if sysctlbyname("kern.memorystatus_vm_pressure_level", &level, &size, nil, 0) == 0 {
+            // 1, 2 and 4, as the kernel's DISPATCH_MEMORYPRESSURE_* flags.
+            pressure = level >= 4 ? .critical : level >= 2 ? .warning : .normal
+        }
+        var swap = xsw_usage()
+        size = MemoryLayout<xsw_usage>.size
+        if sysctlbyname("vm.swapusage", &swap, &size, nil, 0) == 0 {
+            swapUsed = Int64(swap.xsu_used)
+            swapTotal = Int64(swap.xsu_total)
+        }
     }
 
     private static let pageSize: UInt64 = {

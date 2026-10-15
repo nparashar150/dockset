@@ -1,3 +1,4 @@
+import Charts
 import SwiftUI
 
 /// The card every panel is drawn on.
@@ -265,67 +266,61 @@ struct TickMeter: View {
     }
 }
 
-/// The last minute as a row of fine bars, one per sample, older ones fading.
+/// The last minute as smooth filled lines, one per series, on faint rules.
 ///
-/// What replaced the line graphs. A line through a one-second sampler is
-/// either jagged or smoothed into something that did not happen; a bar per
-/// second is exactly what was measured, and fading the old ones makes the
-/// minute read as time going by rather than a chart to be studied.
+/// It was a row of fine bars, one per sample, on the reasoning that a line
+/// through a one-second sampler is either jagged or smoothed into something
+/// that did not happen. Monotone interpolation answers both: it curves
+/// between the samples without overshooting any of them, so every peak
+/// drawn is a peak that was measured.
 ///
-/// `mirror` draws a second series downward from the same centre line, so two
-/// directions of one thing share a single shape.
-struct TickHistory: View {
-    var samples: [Double]
-    var mirror: [Double]? = nil
+/// Several series share one scale so they can be read against each other,
+/// and each is filled to the floor with its own colour fading out, which is
+/// what lets two of them overlap without one hiding the other.
+struct AreaHistory: View {
+    struct Series: Identifiable {
+        var name: String
+        var samples: [Double]
+        var color: Color
+        var id: String { name }
+    }
+
+    var series: [Series]
     var range: ClosedRange<Double>
+    /// How many samples a full buffer holds. A buffer still filling is drawn
+    /// against the right edge, the way the minute will look once it is full.
+    var length: Int
 
     var body: some View {
-        GeometryReader { geo in
-            let slots = max(1, Int((geo.size.width + 2) / 4.5))
-            let up = Self.tail(samples, slots)
-            let down = mirror.map { Self.tail($0, slots) }
-            let half = down == nil ? geo.size.height : geo.size.height / 2
-            ZStack {
-                if down != nil {
-                    Rectangle().fill(.white.opacity(0.12)).frame(height: 0.5)
-                }
-                HStack(alignment: .center, spacing: 0) {
-                    ForEach(0..<slots, id: \.self) { index in
-                        let age = Double(index) / Double(max(slots - 1, 1))
-                        let opacity = 0.18 + 0.7 * age
-                        VStack(spacing: 0) {
-                            Spacer(minLength: 0)
-                            Capsule()
-                                .fill(.white.opacity(opacity))
-                                .frame(width: 2.5, height: bar(up[index], half))
-                            if let down {
-                                Capsule()
-                                    .fill(.white.opacity(opacity * 0.55))
-                                    .frame(width: 2.5, height: bar(down[index], half))
-                                    .padding(.top, 1)
-                                Spacer(minLength: 0)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity,
-                               alignment: down == nil ? .bottom : .center)
-                    }
+        Chart {
+            ForEach(series) { line in
+                let offset = length - line.samples.count
+                ForEach(Array(line.samples.enumerated()), id: \.offset) { index, value in
+                    let x = Double(offset + index)
+                    let y = min(max(value, range.lowerBound), range.upperBound)
+                    AreaMark(x: .value("Second", x), yStart: .value("Floor", range.lowerBound),
+                             yEnd: .value(line.name, y), series: .value("Series", line.name))
+                        .foregroundStyle(LinearGradient(colors: [line.color.opacity(0.32),
+                                                                 line.color.opacity(0.02)],
+                                                        startPoint: .top, endPoint: .bottom))
+                        .interpolationMethod(.monotone)
+                    LineMark(x: .value("Second", x), y: .value(line.name, y),
+                             series: .value("Series", line.name))
+                        .foregroundStyle(line.color)
+                        .lineStyle(StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+                        .interpolationMethod(.monotone)
                 }
             }
         }
-    }
-
-    private func bar(_ value: Double?, _ height: CGFloat) -> CGFloat {
-        guard let value else { return 0 }
-        let span = max(range.upperBound - range.lowerBound, .ulpOfOne)
-        let fraction = min(max((value - range.lowerBound) / span, 0), 1)
-        // A floor of a dot, so an idle second is still a mark in the row.
-        return max(2, (height - 2) * CGFloat(fraction))
-    }
-
-    /// The most recent samples, right-aligned, with empty slots on the left
-    /// until the buffer fills.
-    private static func tail(_ samples: [Double], _ slots: Int) -> [Double?] {
-        let recent = Array(samples.suffix(slots))
-        return Array(repeating: nil, count: slots - recent.count) + recent.map { Optional($0) }
+        .chartXScale(domain: 0 ... Double(max(length - 1, 1)))
+        .chartYScale(domain: range)
+        .chartXAxis(.hidden)
+        .chartYAxis {
+            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                AxisGridLine().foregroundStyle(.white.opacity(0.08))
+            }
+        }
+        .chartLegend(.hidden)
+        .accessibilityHidden(true)
     }
 }

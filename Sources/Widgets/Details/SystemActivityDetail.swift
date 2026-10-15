@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import SwiftUI
 
 /// System Activity said at length: the tile's gauges at a size that can hold a
@@ -24,6 +24,10 @@ struct SystemActivityDetail: View {
                 // battery keep a history that would be a flat line, so they
                 // are not drawn one.
                 if !charted.isEmpty { history }
+
+                if metrics.contains(.cpu), !cores.isEmpty { coreBars }
+                if metrics.contains(.memory) { memoryChips }
+                scanSection
             }
         }
     }
@@ -41,16 +45,35 @@ struct SystemActivityDetail: View {
     /// backwards. The rings say where things are, and this says whether they
     /// are on their way up.
     ///
-    /// To the card's edges and foot, as the ground the readings stand on.
-    /// The lead metric's minute, a bar a second.
+    /// Every moving metric on one chart, each in its own colour, with a
+    /// legend that doubles as the current reading.
     private var history: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("\(charted[0].label), \(span)")
-                .font(WidgetStyle.caption(10))
-                .foregroundStyle(.white.opacity(0.45))
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                ForEach(charted, id: \.self) { metric in
+                    HStack(spacing: 5) {
+                        Circle().fill(metric.color).frame(width: 7, height: 7)
+                        Text("\(metric.label) \(whole(value(metric)))%")
+                            .font(WidgetStyle.label(11))
+                            .foregroundStyle(WidgetStyle.primary)
+                            .monospacedDigit()
+                    }
+                }
+                Spacer(minLength: 0)
+            }
             // Absolute, so a CPU idling low sits low.
-            TickHistory(samples: samples(charted[0]), range: 0...1)
-                .frame(height: 24)
+            AreaHistory(series: charted.map {
+                            AreaHistory.Series(name: $0.label, samples: samples($0), color: $0.color)
+                        },
+                        range: 0...1, length: SystemMetrics.historyLength)
+                .frame(height: 96)
+            HStack {
+                Text(span.capitalized(with: nil))
+                Spacer()
+                Text("Now")
+            }
+            .font(WidgetStyle.caption(10))
+            .foregroundStyle(.white.opacity(0.45))
         }
         .padding(.top, 2)
     }
@@ -65,6 +88,113 @@ struct SystemActivityDetail: View {
     private func samples(_ metric: Metric) -> [Double] {
         guard !context.isPreview else { return [] }
         return SystemMetrics.shared.history(for: metric.rawValue)
+    }
+
+    // MARK: Cores, pressure, swap
+
+    private var cores: [Double] {
+        context.isPreview ? [0.4, 0.2, 0.7, 0.1, 0.3, 0.5, 0.15, 0.25] : SystemMetrics.shared.cores
+    }
+
+    /// One bar per core, so a single thread pinning one core is visible where
+    /// the average would bury it.
+    private var coreBars: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("\(cores.count) cores")
+                .font(WidgetStyle.caption(10))
+                .foregroundStyle(.white.opacity(0.45))
+            HStack(alignment: .bottom, spacing: 3) {
+                ForEach(cores.indices, id: \.self) { index in
+                    GeometryReader { proxy in
+                        VStack(spacing: 0) {
+                            Spacer(minLength: 0)
+                            RoundedRectangle(cornerRadius: 1.5)
+                                .fill(Color(hex: MetricColor.cpu))
+                                .frame(height: max(2, proxy.size.height * cores[index]))
+                        }
+                    }
+                    .background(RoundedRectangle(cornerRadius: 1.5).fill(.white.opacity(0.08)))
+                }
+            }
+            .frame(height: 24)
+            .animation(.easeOut(duration: 0.3), value: cores)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("CPU cores")
+        .accessibilityValue(cores.map { "\(whole($0))" }.joined(separator: ", ") + " percent")
+    }
+
+    private var memoryChips: some View {
+        let metrics = SystemMetrics.shared
+        let pressure = context.isPreview ? "Normal" : metrics.pressure.rawValue
+        let swap = context.isPreview ? "0 bytes"
+            : ByteCountFormatter.string(fromByteCount: metrics.swapUsed, countStyle: .memory)
+        return HStack(spacing: 8) {
+            StatChip(label: "Pressure", value: pressure)
+            StatChip(label: "Swap used", value: swap)
+        }
+    }
+
+    // MARK: Large items
+
+    /// The largest things in the home folder, Applications and Library.
+    ///
+    /// Asked for rather than always shown: the walk is slow and reads every
+    /// file's metadata. It runs in `FolderScanner`, so it carries on if the
+    /// panel closes.
+    private var scanSection: some View {
+        let scanner = FolderScanner.shared
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("LARGE ITEMS")
+                    .font(.system(size: 9, weight: .semibold))
+                    .tracking(0.6)
+                    .foregroundStyle(.white.opacity(0.6))
+                Spacer()
+                if scanner.scanning {
+                    ProgressView().controlSize(.mini)
+                    Text("Scanning…")
+                        .font(WidgetStyle.caption(11))
+                        .foregroundStyle(.white.opacity(0.7))
+                } else {
+                    Button(scanner.finishedAt == nil ? "Scan Folders" : "Scan Again") {
+                        guard !context.isPreview else { return }
+                        scanner.scan()
+                    }
+                    .buttonStyle(.plain)
+                    .font(WidgetStyle.label(11))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(.white.opacity(0.14)))
+                }
+            }
+            ForEach(scanner.items) { item in
+                Button {
+                    NSWorkspace.shared.activateFileViewerSelecting([item.url])
+                } label: {
+                    HStack {
+                        Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path))
+                            .resizable()
+                            .frame(width: 16, height: 16)
+                        Text(item.url.lastPathComponent)
+                            .font(WidgetStyle.label(12))
+                            .foregroundStyle(WidgetStyle.primary)
+                        Spacer(minLength: 8)
+                        Text(ByteCountFormatter.string(fromByteCount: item.bytes, countStyle: .file))
+                            .font(WidgetStyle.caption(11))
+                            .foregroundStyle(.white.opacity(0.7))
+                            .monospacedDigit()
+                    }
+                    .lineLimit(1)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .help("Show \(item.url.path) in Finder")
+            }
+        }
+        .padding(10)
+        .glassPane(cornerRadius: 10)
     }
 
     // MARK: Readings
@@ -186,6 +316,15 @@ struct SystemActivityDetail: View {
     /// there has to be added here too, or the panel drops it silently.
     private enum Metric: String {
         case cpu, memory, disk, battery
+
+        var color: Color {
+            switch self {
+            case .cpu: Color(hex: MetricColor.cpu)
+            case .memory: Color(hex: MetricColor.memory)
+            case .disk: Color(hex: MetricColor.storage)
+            case .battery: Color(hex: MetricColor.batteryPresent)
+            }
+        }
 
         var label: String {
             switch self {

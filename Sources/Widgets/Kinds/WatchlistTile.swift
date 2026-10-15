@@ -39,7 +39,7 @@ struct WatchlistTile: View {
         }
         .task(id: symbols) {
             guard !context.isPreview else { return }
-            StockService.shared.track(symbols)
+            StockService.shared.track(symbols, every: StockSettings.interval(instance.config))
         }
     }
 
@@ -53,7 +53,7 @@ struct WatchlistTile: View {
                 let symbol = symbols[index]
                 let quote = quote(symbol)
                 VStack(spacing: 1) {
-                    Text(symbol)
+                    Text(StockSettings.label(symbol, instance.config))
                         .font(WidgetStyle.label(11))
                         .foregroundStyle(WidgetStyle.primary)
                     // The shelf's value style, level with every other tile.
@@ -81,7 +81,7 @@ struct WatchlistTile: View {
                 let quote = quote(symbol)
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 4) {
-                        Text(symbol)
+                        Text(StockSettings.label(symbol, instance.config))
                             .font(WidgetStyle.label(9))
                             .foregroundStyle(WidgetStyle.secondary)
                         Spacer(minLength: 0)

@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SystemConfiguration
 
 /// Throughput across every non-loopback interface, in bytes per second.
 ///
@@ -88,5 +89,84 @@ final class NetworkMetrics {
             tx += UInt64(data.pointee.ifi_obytes)
         }
         return (rx, tx)
+    }
+}
+
+// MARK: - Interfaces
+
+/// One active link, for the network panel.
+struct NetworkInterface: Identifiable, Hashable, Sendable {
+    /// The BSD name, en0 and the like.
+    var id: String
+    /// What System Settings calls it: "Wi-Fi", "Thunderbolt Ethernet".
+    var name: String
+    var ipv4: String?
+    var ipv6: String?
+    /// Carries the default route.
+    var isPrimary: Bool
+
+    /// Read once as the panel opens. Addresses change on a network switch,
+    /// not by the second, so this is not on the sampler's clock.
+    ///
+    /// Only links that are up and hold an address: a Mac lists a dozen
+    /// interfaces, bridges and Bluetooth PAN and inactive Thunderbolt ports
+    /// among them, and naming those would bury the one that is in use.
+    static func active() -> [NetworkInterface] {
+        var head: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&head) == 0, let first = head else { return [] }
+        defer { freeifaddrs(head) }
+
+        var v4: [String: String] = [:]
+        var v6: [String: String] = [:]
+        for entry in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let flags = Int32(entry.pointee.ifa_flags)
+            guard flags & IFF_LOOPBACK == 0, flags & IFF_UP != 0, flags & IFF_RUNNING != 0,
+                  let address = entry.pointee.ifa_addr else { continue }
+            let bsd = String(cString: entry.pointee.ifa_name)
+            let family = Int32(address.pointee.sa_family)
+            guard family == AF_INET || family == AF_INET6 else { continue }
+            var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            guard getnameinfo(address, socklen_t(address.pointee.sa_len), &host, socklen_t(host.count),
+                              nil, 0, NI_NUMERICHOST) == 0 else { continue }
+            let text = String(decoding: host.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
+            if family == AF_INET {
+                v4[bsd] = v4[bsd] ?? text
+            } else if !text.hasPrefix("fe80"), v6[bsd] == nil {
+                // Link-local is on every interface and routes nowhere.
+                v6[bsd] = text
+            }
+        }
+
+        let names = displayNames()
+        let primary = primaryInterface()
+        return Set(v4.keys).union(v6.keys)
+            // Tunnels and Apple's own peer-to-peer links carry addresses but
+            // are not something the user connected to.
+            .filter { names[$0] != nil || $0 == primary }
+            .map { bsd in
+                NetworkInterface(id: bsd, name: names[bsd] ?? bsd, ipv4: v4[bsd], ipv6: v6[bsd],
+                                 isPrimary: bsd == primary)
+            }
+            .sorted { ($0.isPrimary ? 0 : 1, $0.id) < ($1.isPrimary ? 0 : 1, $1.id) }
+    }
+
+    private static func displayNames() -> [String: String] {
+        guard let all = SCNetworkInterfaceCopyAll() as? [SCNetworkInterface] else { return [:] }
+        var names: [String: String] = [:]
+        for interface in all {
+            guard let bsd = SCNetworkInterfaceGetBSDName(interface) as String?,
+                  let name = SCNetworkInterfaceGetLocalizedDisplayName(interface) as String?
+            else { continue }
+            names[bsd] = name
+        }
+        return names
+    }
+
+    private static func primaryInterface() -> String? {
+        guard let store = SCDynamicStoreCreate(nil, "Docket" as CFString, nil, nil),
+              let global = SCDynamicStoreCopyValue(store, "State:/Network/Global/IPv4" as CFString)
+                as? [String: Any]
+        else { return nil }
+        return global["PrimaryInterface"] as? String
     }
 }

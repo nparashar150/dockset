@@ -188,6 +188,20 @@ struct DockShelfView: View {
 
     // MARK: Solve
 
+    /// A Now Playing widget set to hide while none of the players it
+    /// watches is open. Read off `AppCatalog.runningIDs`, which is observed,
+    /// so the tile comes back the moment one launches - it cannot rely on its
+    /// own poll, which is not running while the tile is off the shelf.
+    private static func hiddenForNow(_ item: DockItem) -> Bool {
+        guard let widget = item.widget, widget.kind == .music,
+              widget.config.bool("hideWhenClosed") else { return false }
+        var watched: [String] = []
+        if widget.config.bool("spotify", default: true) { watched.append(MusicSource.spotify.bundleID) }
+        if widget.config.bool("apple", default: true) { watched.append(MusicSource.appleMusic.bundleID) }
+        if widget.config.bool("browsers", default: true) { watched += BrowserApp.allCases.map(\.bundleID) }
+        return !watched.contains(where: AppCatalog.shared.isRunning(bundleID:))
+    }
+
     private func solve() -> Solved {
         var result = Solved()
 
@@ -196,9 +210,10 @@ struct DockShelfView: View {
         // Filtered rather than edited: the apps stay in the profile and come
         // back the moment the setting goes off, so turning it on costs
         // nothing and turning it off loses nothing.
-        let items = settings.widgetsOnly
+        let items = (settings.widgetsOnly
             ? app.effectiveItems.filter(\.isWidget)
-            : app.effectiveItems
+            : app.effectiveItems)
+            .filter { !Self.hiddenForNow($0) }
         var entries = items.map {
             Entry(id: $0.id, item: $0, isRunningApp: false, label: label(for: $0))
         }
@@ -831,6 +846,7 @@ struct DockShelfView: View {
     }
 
     private func open(_ entry: Entry) {
+        panelLog.debug("tap \(entry.label, privacy: .public)")
         // The Dock drops its label the moment you click, and here it would
         // otherwise sit over whatever the click just opened.
         TooltipWindow.shared.hide()
@@ -1230,6 +1246,17 @@ struct DockShelfView: View {
                                                widget: entry.item.widget?.id)
                 }
             }
+            // Same kind and settings under a new id, so the copy starts with
+            // its own timers and panel rather than sharing the original's.
+            if let widget = entry.item.widget {
+                Button("Duplicate") {
+                    var copy = widget
+                    copy.id = UUID()
+                    withAnimation(.snappy(duration: 0.24)) {
+                        app.insertItem(.widget(copy), after: entry.id)
+                    }
+                }
+            }
             if let widget = entry.item.widget,
                WidgetCatalog.entry(widget.kind)?.supportsCompact == true {
                 Button(widget.expanded ? "Collapse" : "Expand") {
@@ -1246,7 +1273,9 @@ struct DockShelfView: View {
             if let widget = entry.item.widget, widget.kind == .weather {
                 Button("Set Location…") { setCity(widget) }
             }
-            if entry.item.fileRef != nil {
+            if entry.isTrash {
+                Button("Empty Trash…") { confirmEmptyTrash() }
+            } else if entry.item.fileRef != nil {
                 Button("Show in Finder") { AppCatalog.shared.reveal(entry.item) }
             }
         }
@@ -1365,6 +1394,24 @@ struct DockShelfView: View {
         var updated = widget
         updated.config.set("city", .string(field.stringValue.trimmingCharacters(in: .whitespaces)))
         app.updateWidget(updated)
+    }
+
+    /// The Dock's own wording. Finder's scripted empty never asks, so this is
+    /// the only chance to back out of something that cannot be undone.
+    private func confirmEmptyTrash() {
+        let policy = NSApp.activationPolicy()
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+        defer { NSApp.setActivationPolicy(policy) }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Are you sure you want to permanently erase the items in the Trash?"
+        alert.informativeText = "You can’t undo this action."
+        alert.addButton(withTitle: "Empty Trash").hasDestructiveAction = true
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        AppCatalog.shared.emptyTrash()
     }
 
     /// An accessory agent is never frontmost, so a modal sheet needs the same

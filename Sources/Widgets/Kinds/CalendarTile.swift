@@ -94,11 +94,14 @@ struct CalendarTile: View {
                     Text(event.title)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(WidgetStyle.primary)
-                    Text(event.detail)
+                    Text(event.detail(context.now))
                         .font(.system(size: 12))
                         .foregroundStyle(WidgetStyle.secondary)
                 }
                 Spacer(minLength: 0)
+                if event.isJoinable(context.now), let link = event.meeting {
+                    JoinButton(url: link, enabled: !context.isPreview)
+                }
             }
             // Truncated rather than wrapped: a second line would not fit the
             // card, and half a clipped title is worse than an honest ellipsis.
@@ -120,7 +123,7 @@ struct CalendarTile: View {
                 ForEach(rows) { event in
                     HStack(spacing: 6) {
                         dot(event.color, size: 6)
-                        Text(event.timeText)
+                        Text(event.when(context.now))
                             .font(WidgetStyle.label(11))
                             .foregroundStyle(WidgetStyle.primary)
                             .monospacedDigit()
@@ -174,7 +177,7 @@ struct CalendarTile: View {
                     dot(event.color, size: 5)
                     // One line that shrinks: in a 76pt column "9:30 AM" wrapped
                     // its meridiem onto a line of its own.
-                    Text(event.timeText)
+                    Text(event.when(context.now))
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(WidgetStyle.primary)
                         .monospacedDigit()
@@ -346,10 +349,13 @@ private struct TileEvent: Identifiable, Hashable {
     var isAllDay: Bool
     var calendar: String
     var color: Color
+    /// A Meet, Zoom or Teams link found anywhere in the event.
+    var meeting: URL?
 
     init(id: String, title: String, start: Date, end: Date,
-         isAllDay: Bool = false, calendar: String, color: Color) {
+         isAllDay: Bool = false, calendar: String, color: Color, meeting: URL? = nil) {
         self.id = id
+        self.meeting = meeting
         self.title = title
         self.start = start
         self.end = end
@@ -371,7 +377,8 @@ private struct TileEvent: Identifiable, Hashable {
             end: event.endDate ?? start,
             isAllDay: event.isAllDay,
             calendar: event.calendar?.title ?? "",
-            color: Self.tint(event.calendar))
+            color: Self.tint(event.calendar),
+            meeting: MeetingLink.find(in: [event.url?.absoluteString, event.location, event.notes]))
     }
 
     /// The calendar's own colour, which is the only thing that makes a dot
@@ -387,10 +394,22 @@ private struct TileEvent: Identifiable, Hashable {
         isAllDay ? "All day" : start.formatted(date: .omitted, time: .shortened)
     }
 
+    /// The clock, or how long until it within the hour, which is the only
+    /// stretch where "in 12 min" is quicker to read than "10:30".
+    func when(_ now: Date) -> String {
+        isAllDay ? timeText : EventTime.label(start: start, end: end, now: now)
+    }
+
     /// The panel's second line, and a calendar with no name does not earn a
     /// separator to itself.
-    var detail: String {
-        calendar.isEmpty ? timeText : "\(timeText) · \(calendar)"
+    func detail(_ now: Date) -> String {
+        calendar.isEmpty ? when(now) : "\(when(now)) · \(calendar)"
+    }
+
+    /// Whether the call is close enough to offer joining from the shelf: ten
+    /// minutes before it starts until it ends.
+    func isJoinable(_ now: Date) -> Bool {
+        meeting != nil && !isAllDay && now >= start.addingTimeInterval(-600) && now < end
     }
 
     /// A representative day for the widget library, which has no store behind
@@ -412,5 +431,45 @@ private struct TileEvent: Identifiable, Hashable {
                       start: at(13, 0), end: at(14, 0),
                       calendar: "Personal", color: Color(hex: PaletteColor.green.hex))
         ]
+    }
+}
+
+/// "Now", "In 12 min", or the clock. Shared by the tile and the panel so the
+/// two never word the same event differently.
+enum EventTime {
+    static func label(start: Date, end: Date, now: Date) -> String {
+        if start <= now, now < end { return "Now" }
+        let minutes = Int(start.timeIntervalSince(now) / 60)
+        guard start > now, minutes < 60 else {
+            return start.formatted(date: .omitted, time: .shortened)
+        }
+        return minutes < 1 ? "In <1 min" : "In \(minutes) min"
+    }
+}
+
+/// Opens a call's link. Shared by the tile and the panel so both say the same
+/// thing in the same shape.
+struct JoinButton: View {
+    var url: URL
+    /// Off in the widget library, which must not open anything.
+    var enabled = true
+
+    var body: some View {
+        Button {
+            guard enabled else { return }
+            NSWorkspace.shared.open(url)
+        } label: {
+            Text("Join")
+                .font(WidgetStyle.label(11))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(Capsule().fill(Color.green.opacity(0.75)))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .help(url.host ?? "Join call")
+        .accessibilityLabel("Join call")
     }
 }
