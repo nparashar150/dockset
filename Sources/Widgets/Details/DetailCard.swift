@@ -290,6 +290,9 @@ struct AreaHistory: View {
     /// How many samples a full buffer holds. A buffer still filling is drawn
     /// against the right edge, the way the minute will look once it is full.
     var length: Int
+    /// Lines alone when false, for several series where fills stacked on
+    /// fills would muddy every colour.
+    var filled = true
 
     var body: some View {
         Chart {
@@ -298,12 +301,14 @@ struct AreaHistory: View {
                 ForEach(Array(line.samples.enumerated()), id: \.offset) { index, value in
                     let x = Double(offset + index)
                     let y = min(max(value, range.lowerBound), range.upperBound)
-                    AreaMark(x: .value("Second", x), yStart: .value("Floor", range.lowerBound),
-                             yEnd: .value(line.name, y), series: .value("Series", line.name))
-                        .foregroundStyle(LinearGradient(colors: [line.color.opacity(0.32),
-                                                                 line.color.opacity(0.02)],
-                                                        startPoint: .top, endPoint: .bottom))
-                        .interpolationMethod(.monotone)
+                    if filled {
+                        AreaMark(x: .value("Second", x), yStart: .value("Floor", range.lowerBound),
+                                 yEnd: .value(line.name, y), series: .value("Series", line.name))
+                            .foregroundStyle(LinearGradient(colors: [line.color.opacity(0.32),
+                                                                     line.color.opacity(0.02)],
+                                                            startPoint: .top, endPoint: .bottom))
+                            .interpolationMethod(.monotone)
+                    }
                     LineMark(x: .value("Second", x), y: .value(line.name, y),
                              series: .value("Series", line.name))
                         .foregroundStyle(line.color)
