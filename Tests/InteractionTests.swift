@@ -304,6 +304,35 @@ final class InteractionTests: XCTestCase {
         }
     }
 
+    /// The app has no Edit menu, so the panel itself has to turn Command-A
+    /// and friends into the actions a focused field answers.
+    func testEditShortcutsReachTheFocusedField() {
+        let panel = KeyablePanel(contentRect: NSRect(x: 0, y: 0, width: 200, height: 40),
+                                 styleMask: [.borderless, .nonactivatingPanel],
+                                 backing: .buffered, defer: false)
+        let field = NSTextField(string: "hello there")
+        field.frame = NSRect(x: 0, y: 0, width: 200, height: 24)
+        panel.contentView?.addSubview(field)
+        panel.orderFrontRegardless()
+        panel.makeKey()
+        XCTAssertTrue(panel.makeFirstResponder(field))
+        let editor = try! XCTUnwrap(panel.fieldEditor(false, for: field) as? NSTextView)
+        editor.setSelectedRange(NSRange(location: 0, length: 0))
+
+        func key(_ character: String, _ flags: NSEvent.ModifierFlags = .command) -> NSEvent {
+            NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags,
+                             timestamp: 0, windowNumber: panel.windowNumber, context: nil,
+                             characters: character, charactersIgnoringModifiers: character,
+                             isARepeat: false, keyCode: 0)!
+        }
+        XCTAssertTrue(panel.performKeyEquivalent(with: key("a")))
+        XCTAssertEqual(editor.selectedRange(), NSRange(location: 0, length: 11))
+        // Not an edit shortcut: left for the rest of the app.
+        XCTAssertNil(KeyablePanel.editAction(for: key("a", [.command, .option])))
+        XCTAssertEqual(KeyablePanel.editAction(for: key("z", [.command, .shift])), Selector(("redo:")))
+        panel.orderOut(nil)
+    }
+
     /// The first click into a window that is not key is consumed as the click
     /// that focuses it. Without this the opening press of every drag out of a
     /// group was swallowed.

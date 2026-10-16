@@ -286,7 +286,32 @@ public final class KeyablePanel: NSPanel {
             onCancel?()
             return true
         }
+        if let action = Self.editAction(for: event),
+           NSApp.sendAction(action, to: nil, from: self) {
+            return true
+        }
         return super.performKeyEquivalent(with: event)
+    }
+
+    /// Select All, Copy, Cut, Paste, Undo and Redo.
+    ///
+    /// An app with no menu bar of its own has no Edit menu, and the Edit
+    /// menu is where these shortcuts live: without it a focused field took
+    /// typing but ignored Command-A and Command-V. Sent down the responder
+    /// chain, so whichever field has focus answers, and anything that does
+    /// not handle the action lets the key through.
+    static func editAction(for event: NSEvent) -> Selector? {
+        let flags = event.modifierFlags.intersection([.command, .shift, .option, .control])
+        let key = event.charactersIgnoringModifiers?.lowercased()
+        switch (flags, key) {
+        case ([.command], "a"): return #selector(NSText.selectAll(_:))
+        case ([.command], "c"): return #selector(NSText.copy(_:))
+        case ([.command], "x"): return #selector(NSText.cut(_:))
+        case ([.command], "v"): return #selector(NSText.paste(_:))
+        case ([.command], "z"): return Selector(("undo:"))
+        case ([.command, .shift], "z"): return Selector(("redo:"))
+        default: return nil
+        }
     }
 }
 
