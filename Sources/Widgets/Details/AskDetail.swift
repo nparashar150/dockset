@@ -1,11 +1,16 @@
 import AppKit
 import SwiftUI
 
-/// Ask at length: a question at the top, the answer built under it as cards.
+/// Ask at length: the coding agents running on this Mac, and a question at
+/// the foot that can be about them or about anything.
+///
+/// The agents are listed by project with the last thing asked in each; a chip
+/// per session brings its tab forward, or takes a message for it. A question
+/// carries the list with it, so "which ones are waiting?" is answered from
+/// what is actually running. The answer replaces the list as cards.
 ///
 /// The panel window is sized once when it opens, so the card is a fixed
-/// height and the answer scrolls inside it rather than growing a window that
-/// cannot grow.
+/// height and the list and the answer scroll inside it.
 struct AskDetail: View {
     var instance: WidgetInstance
     var context: WidgetContext
@@ -13,8 +18,12 @@ struct AskDetail: View {
     @State private var draft = ""
     @State private var key = ""
     @FocusState private var focused: Bool
+    /// The session a message is being written for, and the message.
+    @State private var sendingTo: RunningAgent?
+    @State private var message = ""
 
     private var service: AskService { AskService.shared }
+    private var scanner: AgentScanner { AgentScanner.shared }
 
     var body: some View {
         DetailCard {
@@ -22,9 +31,11 @@ struct AskDetail: View {
         } content: {
             VStack(alignment: .leading, spacing: 12) {
                 if context.isPreview || service.canAsk {
-                    input
                     stage
                         .frame(maxHeight: .infinity, alignment: .top)
+                    // At the foot, where a chat's input is: the list above is
+                    // what the question is usually about.
+                    input
                 } else {
                     connect
                 }
@@ -38,6 +49,16 @@ struct AskDetail: View {
             service.refreshKey()
             focused = true
         }
+        // Every few seconds while this panel is the one open. The window is
+        // hidden rather than torn down between openings, so the loop checks
+        // rather than relying on being cancelled.
+        .task {
+            guard !context.isPreview else { return }
+            while !Task.isCancelled {
+                if WidgetDetailWindow.shared.openWidgetID == instance.id { await scanner.refresh() }
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
         // An answer nobody is looking at is spend for nothing.
         .onDisappear { if !context.isPreview { service.cancel() } }
     }
@@ -48,10 +69,16 @@ struct AskDetail: View {
 
     private var input: some View {
         HStack(spacing: 10) {
+            // Pulses while an answer is coming and gives one hop when it
+            // lands: the mark is where the question went, so it is what
+            // answers.
             Image(systemName: "sparkle")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.panelInk.opacity(0.7))
-            TextField("", text: $draft, prompt: Text("Ask anything…").foregroundStyle(Color.panelInk.opacity(0.45)))
+                .foregroundStyle(busy ? Color(hex: PaletteColor.indigo.hex) : Color.panelInk.opacity(0.7))
+                .symbolEffect(.pulse, options: .repeating, isActive: busy)
+                .symbolEffect(.bounce, value: service.phase == .done)
+                .animation(.smooth(duration: 0.3), value: busy)
+            TextField("", text: $draft, prompt: Text(scanner.agents.isEmpty ? "Ask anything…" : "Ask about your agents, or anything…").foregroundStyle(Color.panelInk.opacity(0.45)))
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
                 .foregroundStyle(Color.panelInk)
@@ -79,8 +106,15 @@ struct AskDetail: View {
 
     private func send() {
         guard !draft.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        service.ask(draft)
+        ask(draft)
         draft = ""
+    }
+
+    /// Every question carries the agents running right now, when there are
+    /// any: the list is a few hundred tokens and it is what most questions
+    /// asked from here are about.
+    private func ask(_ question: String) {
+        service.ask(question, context: scanner.agents.isEmpty ? nil : scanner.summary)
     }
 
     // MARK: Stage
@@ -91,7 +125,7 @@ struct AskDetail: View {
         } else {
             switch service.phase {
             case .idle:
-                suggestions
+                if scanner.agents.isEmpty { suggestions } else { agentList }
             case .thinking:
                 AskThinking(question: service.question)
                     .transition(.opacity)
@@ -116,7 +150,7 @@ struct AskDetail: View {
                 .tracking(0.6)
                 .foregroundStyle(Color.panelInk.opacity(0.5))
             ForEach(Self.prompts, id: \.self) { prompt in
-                Button { service.ask(prompt) } label: {
+                Button { ask(prompt) } label: {
                     Text(prompt)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.panelInk.opacity(0.85))
@@ -129,6 +163,91 @@ struct AskDetail: View {
             }
         }
         .padding(.top, 4)
+    }
+
+    // MARK: Agents
+
+    private var agentList: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text(agentHeadline)
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(Color.panelInk.opacity(0.5))
+                    Spacer()
+                    Button("What are they doing?") { ask("What is each of my agents doing, and which need me?") }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Color.panelInk.opacity(0.7))
+                }
+                ForEach(scanner.byProject, id: \.project) { group in
+                    projectRow(group.project, directory: group.directory, agents: group.agents)
+                }
+            }
+        }
+        .scrollIndicators(.never)
+    }
+
+    private var agentHeadline: String {
+        let count = scanner.agents.count
+        let working = scanner.working
+        let base = count == 1 ? "1 AGENT" : "\(count) AGENTS"
+        return working > 0 ? "\(base) · \(working) WORKING" : base
+    }
+
+    private func projectRow(_ project: String, directory: String?, agents: [RunningAgent]) -> some View {
+        let seen = directory.flatMap { scanner.activity[$0] }
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(project)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.panelInk)
+                Spacer(minLength: 8)
+                if let seen {
+                    Text(AgentScanner.age(seen.updated) + " ago")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.panelInk.opacity(0.5))
+                        .monospacedDigit()
+                }
+            }
+            if let prompt = seen?.lastPrompt {
+                Text("\u{201C}\(prompt)\u{201D}")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.panelInk.opacity(0.65))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            // One chip per session: which app it is in, how long it has run,
+            // whether it is busy. Clicked, it comes forward.
+            FlowChips(agents: agents, sendingTo: $sendingTo)
+            if let target = sendingTo, agents.contains(target) {
+                HStack(spacing: 8) {
+                    Image(systemName: "paperplane")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.panelInk.opacity(0.6))
+                    TextField("", text: $message,
+                              prompt: Text("Type into this \(target.name) session…")
+                                .foregroundStyle(Color.panelInk.opacity(0.4)))
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 12))
+                        .onSubmit {
+                            let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !text.isEmpty else { return }
+                            AgentScanner.send(text, to: target)
+                            message = ""
+                            sendingTo = nil
+                        }
+                        .onExitCommand { sendingTo = nil }
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .glassPane(cornerRadius: 9)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassPane(cornerRadius: 10)
     }
 
     @ViewBuilder
@@ -204,7 +323,7 @@ struct AskDetail: View {
                     .font(.system(size: 13))
                     .foregroundStyle(Color.panelInk.opacity(0.9))
                     .fixedSize(horizontal: false, vertical: true)
-                footerButton("Try again", symbol: "arrow.clockwise") { service.ask(service.question) }
+                footerButton("Try again", symbol: "arrow.clockwise") { ask(service.question) }
             }
         }
         .padding(12)
@@ -219,7 +338,12 @@ struct AskDetail: View {
     /// typed, rather than sending anyone off to find a Settings tab first.
     private var connect: some View {
         VStack(alignment: .leading, spacing: 14) {
-            AskOrb(size: 44)
+            TileBadge(size: 44) {
+                Image(systemName: "sparkle")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Color.panelInk)
+                    .symbolEffect(.breathe)
+            }
             VStack(alignment: .leading, spacing: 4) {
                 Text("Ask Claude anything")
                     .font(.system(size: 17, weight: .semibold))
@@ -486,58 +610,52 @@ private struct AskBlockView: View {
 
 // MARK: - Thinking
 
-/// What the panel shows between asking and the first block arriving.
+/// What the panel shows between asking and the first block arriving: the
+/// word "Thinking" with light passing through it, over the question.
 ///
-/// A slowly turning ring of light around the mark, breathing, over three
-/// placeholder lines a soft light passes along: it says something is being
-/// written rather than that something has stalled.
+/// It was a turning ring around the mark and three skeleton lines, which read
+/// as a loading spinner on a loop. Light moving across the word reads as
+/// something being written, and the mark in the input pulses alongside it.
 private struct AskThinking: View {
     let question: String
 
-    var body: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(spacing: 12) {
-                    AskOrb(size: 38)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Thinking" + String(repeating: ".", count: Int(t * 2.5) % 4))
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(Color.panelInk)
-                        Text(question)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.panelInk.opacity(0.55))
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                }
-                VStack(alignment: .leading, spacing: 9) {
-                    ForEach([1.0, 0.86, 0.6], id: \.self) { width in
-                        skeleton(width: width, t: t)
-                    }
-                }
-            }
-        }
-        .padding(.top, 6)
-    }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// A placeholder line with a band of light sweeping along it.
-    private func skeleton(width: Double, t: Double) -> some View {
-        GeometryReader { geo in
-            let w = geo.size.width * width
-            let phase = (t.truncatingRemainder(dividingBy: 1.6)) / 1.6
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(Color.panelInk.opacity(0.08))
-                .overlay {
-                    LinearGradient(colors: [.clear, Color.panelInk.opacity(0.22), .clear],
-                                   startPoint: .leading, endPoint: .trailing)
-                        .frame(width: w * 0.45)
-                        .offset(x: -w * 0.45 + (w * 1.45) * phase)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                .frame(width: w)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TimelineView(.animation(paused: reduceMotion)) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                // Across and off the end every 1.8s, eased so it lingers on
+                // the word rather than sweeping at one speed.
+                let raw = t.truncatingRemainder(dividingBy: 1.8) / 1.8
+                let phase = raw * raw * (3 - 2 * raw)
+                Text("Thinking")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(Color.panelInk.opacity(0.35))
+                    .overlay {
+                        Text("Thinking")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(LinearGradient(
+                                colors: [Color.panelInk, Color(hex: PaletteColor.indigo.hex)],
+                                startPoint: .leading, endPoint: .trailing))
+                            .mask {
+                                GeometryReader { geo in
+                                    LinearGradient(colors: [.clear, .white, .clear],
+                                                   startPoint: .leading, endPoint: .trailing)
+                                        .frame(width: geo.size.width * 0.7)
+                                        .offset(x: -geo.size.width * 0.7 + geo.size.width * 1.7 * phase)
+                                }
+                            }
+                    }
+            }
+            Text(question)
+                .font(.system(size: 12))
+                .foregroundStyle(Color.panelInk.opacity(0.55))
+                .lineLimit(2)
         }
-        .frame(height: 9)
+        .padding(.top, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Thinking about \(question)")
     }
 }
 
@@ -560,36 +678,99 @@ private struct AskDots: View {
     }
 }
 
-/// The sparkle inside a slowly turning ring of light, breathing: Ask's mark
-/// when it is waiting, whether for an answer or for a way to ask.
-private struct AskOrb: View {
-    var size: CGFloat
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+/// A project's sessions as chips that wrap: the app each runs in, how long
+/// it has run, and a dot that is lit while it works. Click to bring it
+/// forward; the context menu sends it a message where its terminal allows.
+private struct FlowChips: View {
+    var agents: [RunningAgent]
+    @Binding var sendingTo: RunningAgent?
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            let breathe = 1 + 0.06 * sin(t * 2.4)
-            ZStack {
-                Circle()
-                    .fill(Color.panelInk.opacity(0.06))
-                Circle()
-                    .strokeBorder(
-                        AngularGradient(colors: [Color.panelInk.opacity(0.05), Color.panelInk.opacity(0.85),
-                                                 Color(hex: PaletteColor.indigo.hex).opacity(0.6),
-                                                 Color.panelInk.opacity(0.05)],
-                                        center: .center),
-                        lineWidth: 1.6)
-                    .rotationEffect(.degrees(t * 120))
-                Image(systemName: "sparkle")
-                    .font(.system(size: size * 0.4, weight: .semibold))
-                    .foregroundStyle(Color.panelInk)
-                    .scaleEffect(breathe)
-                    .opacity(0.75 + 0.25 * sin(t * 2.4))
+        WrapLayout(spacing: 6) {
+            ForEach(agents) { agent in
+                Button { AgentScanner.focus(agent) } label: { chip(agent) }
+                    .buttonStyle(.plain)
+                    .help(help(agent))
+                    .contextMenu {
+                        Button("Bring Forward") { AgentScanner.focus(agent) }
+                        if agent.canSend {
+                            Button("Send a Message…") { sendingTo = agent }
+                        }
+                        if let directory = agent.directory {
+                            Button("Copy Path") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(directory, forType: .string)
+                            }
+                        }
+                    }
             }
-            .frame(width: size, height: size)
         }
-        .accessibilityHidden(true)
+    }
+
+    private func chip(_ agent: RunningAgent) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(agent.working ? Color.green : Color.panelInk.opacity(0.25))
+                .frame(width: 6, height: 6)
+            if let bundle = agent.hostBundleID,
+               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+                    .resizable()
+                    .frame(width: 13, height: 13)
+            }
+            Text(agent.kind == .app ? agent.name : "\(agent.name) · \(AgentScanner.age(agent.started))")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.panelInk.opacity(0.85))
+                .monospacedDigit()
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(Color.panelInk.opacity(0.08)))
+        .contentShape(Capsule())
+    }
+
+    private func help(_ agent: RunningAgent) -> String {
+        var parts = ["\(agent.name) in \(agent.host)"]
+        if let directory = agent.directory { parts.append(directory) }
+        parts.append(agent.working ? "Working" : "Idle")
+        parts.append(agent.canSend ? "Click to bring forward, right-click to send a message" : "Click to bring forward")
+        return parts.joined(separator: "\n")
+    }
+}
+
+/// Rows that wrap, left to right.
+private struct WrapLayout: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? .infinity
+        var x: CGFloat = 0, y: CGFloat = 0, row: CGFloat = 0, widest: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > width {
+                y += row + spacing
+                x = 0
+                row = 0
+            }
+            x += size.width + spacing
+            row = max(row, size.height)
+            widest = max(widest, x - spacing)
+        }
+        return CGSize(width: proposal.width ?? widest, height: y + row)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX, y = bounds.minY, row: CGFloat = 0
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > bounds.minX, x + size.width > bounds.maxX {
+                y += row + spacing
+                x = bounds.minX
+                row = 0
+            }
+            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            row = max(row, size.height)
+        }
     }
 }
