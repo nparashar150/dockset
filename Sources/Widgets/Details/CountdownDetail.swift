@@ -44,10 +44,10 @@ struct CountdownDetail: View {
             VStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .stroke(.white.opacity(0.12), lineWidth: 5)
+                        .stroke(Color.panelInk.opacity(0.12), lineWidth: 5)
                     Circle()
                         .trim(from: 0, to: min(1, max(0, fraction)))
-                        .stroke(.white.opacity(0.8), style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                        .stroke(Color.panelInk.opacity(0.8), style: StrokeStyle(lineWidth: 5, lineCap: .round))
                         .rotationEffect(.degrees(-90))
                     VStack(spacing: 2) {
                         Text(docketClockString(left))
@@ -59,7 +59,7 @@ struct CountdownDetail: View {
                             .minimumScaleFactor(0.5)
                         Text(caption(running: running, duration: total))
                             .font(WidgetStyle.label(11))
-                            .foregroundStyle(.white.opacity(0.75))
+                            .foregroundStyle(Color.panelInk.opacity(0.75))
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
@@ -72,7 +72,7 @@ struct CountdownDetail: View {
                     // Restarting in flight throws away time already run, which is
                     // why the tile keeps it off the card and the panel carries it.
                     ClockPanelButton(title: running ? "Restart" : "Start",
-                                     fill: .white.opacity(0.24), ink: .white) { start(duration: total) }
+                                     fill: Color.panelInk.opacity(0.24), ink: Color.panelInk) { start(duration: total) }
                     ClockPanelButton(title: "Cancel", fill: nil, action: cancel)
                         .disabled(deadline == nil)
                         .opacity(deadline == nil ? 0.4 : 1)
@@ -100,10 +100,10 @@ struct CountdownDetail: View {
         Button { pick(minutes, now: now) } label: {
             Text("\(minutes) min")
                 .font(WidgetStyle.label(11))
-                .foregroundStyle(.white.opacity(active ? 1 : 0.75))
+                .foregroundStyle(Color.panelInk.opacity(active ? 1 : 0.75))
                 .frame(maxWidth: .infinity)
                 .frame(height: 26)
-                .background(Capsule().fill(Color.white.opacity(active ? 0.28 : 0.1)))
+                .background(Capsule().fill(Color.panelInk.opacity(active ? 0.28 : 0.1)))
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)

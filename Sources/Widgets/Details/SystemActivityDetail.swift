@@ -38,7 +38,7 @@ struct SystemActivityDetail: View {
                     Text("Now")
                 }
                 .font(WidgetStyle.caption(10))
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Color.panelInk.opacity(0.45))
             }
         }
     }
@@ -52,7 +52,7 @@ struct SystemActivityDetail: View {
                         Circle().fill(metric.color).frame(width: 7, height: 7)
                         Text(metric.label)
                             .font(WidgetStyle.label(11))
-                            .foregroundStyle(.white.opacity(0.7))
+                            .foregroundStyle(Color.panelInk.opacity(0.7))
                     }
                     Text("\(whole(value(metric)))%")
                         .font(.system(size: 24, weight: .light))

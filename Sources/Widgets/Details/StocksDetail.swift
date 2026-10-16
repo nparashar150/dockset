@@ -123,10 +123,10 @@ struct StocksDetail: View {
                 Button(option.title) { range = option }
                     .buttonStyle(.plain)
                     .font(WidgetStyle.label(10))
-                    .foregroundStyle(option == range ? .white : .white.opacity(0.6))
+                    .foregroundStyle(option == range ? .white : Color.panelInk.opacity(0.6))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 3)
-                    .background(Capsule().fill(option == range ? .white.opacity(0.2) : .clear))
+                    .background(Capsule().fill(option == range ? Color.panelInk.opacity(0.2) : .clear))
                     .accessibilityAddTraits(option == range ? .isSelected : [])
             }
         }
@@ -202,7 +202,7 @@ struct StocksDetail: View {
                 .rollingValue(quote.changePercent)
         }
         .font(WidgetStyle.label(12))
-        .foregroundStyle(.white)
+        .foregroundStyle(Color.panelInk)
         .lineLimit(1)
         .padding(.horizontal, 9)
         .padding(.vertical, 4)
@@ -222,7 +222,7 @@ struct StocksDetail: View {
             // To the card's edges and foot, as the ground the price stands
             // on rather than a figure boxed underneath it.
             ZStack(alignment: .bottom) {
-                DitherChart(samples: samples, tint: .white.opacity(0.85))
+                DitherChart(samples: samples, tint: Color.panelInk.opacity(0.85))
                     .frame(height: 72)
                 // The ends of the plotted range, not a clock: the service keeps
                 // closes without their timestamps, so a time axis here would be
@@ -244,7 +244,7 @@ struct StocksDetail: View {
     private func rangeLabel(_ value: Double?) -> some View {
         Text(value?.formatted(.number.precision(.fractionLength(2))) ?? "")
             .font(WidgetStyle.label(10))
-            .foregroundStyle(.white.opacity(0.85))
+            .foregroundStyle(Color.panelInk.opacity(0.85))
             .monospacedDigit()
             .shadow(color: .black.opacity(0.4), radius: 2)
     }

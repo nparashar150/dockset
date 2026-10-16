@@ -50,12 +50,12 @@ struct AskDetail: View {
         HStack(spacing: 10) {
             Image(systemName: "sparkle")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.7))
-            TextField("", text: $draft, prompt: Text("Ask anything…").foregroundStyle(.white.opacity(0.45)))
+                .foregroundStyle(Color.panelInk.opacity(0.7))
+            TextField("", text: $draft, prompt: Text("Ask anything…").foregroundStyle(Color.panelInk.opacity(0.45)))
                 .textFieldStyle(.plain)
                 .font(.system(size: 14))
-                .foregroundStyle(.white)
-                .tint(.white)
+                .foregroundStyle(Color.panelInk)
+                .tint(Color.panelInk)
                 .focused($focused)
                 .onSubmit(send)
                 .disabled(context.isPreview)
@@ -64,9 +64,9 @@ struct AskDetail: View {
             } label: {
                 Image(systemName: busy ? "stop.fill" : "arrow.up")
                     .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.panelInk)
                     .frame(width: 24, height: 24)
-                    .background(Circle().fill(.white.opacity(draft.isEmpty && !busy ? 0.1 : 0.24)))
+                    .background(Circle().fill(Color.panelInk.opacity(draft.isEmpty && !busy ? 0.1 : 0.24)))
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -115,15 +115,15 @@ struct AskDetail: View {
             Text("TRY")
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.6)
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(Color.panelInk.opacity(0.5))
             ForEach(Self.prompts, id: \.self) { prompt in
                 Button { service.ask(prompt) } label: {
                     Text(prompt)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(Color.panelInk.opacity(0.85))
                         .padding(.horizontal, 11)
                         .padding(.vertical, 6)
-                        .background(Capsule().fill(.white.opacity(0.1)))
+                        .background(Capsule().fill(Color.panelInk.opacity(0.1)))
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
@@ -150,7 +150,7 @@ struct AskDetail: View {
                     Text(title.uppercased())
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.7)
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(Color.panelInk.opacity(0.55))
                         .transition(.opacity)
                 }
                 ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
@@ -187,10 +187,10 @@ struct AskDetail: View {
         Button(action: action) {
             Label(title, systemImage: symbol)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(Color.panelInk.opacity(0.75))
                 .padding(.horizontal, 9)
                 .padding(.vertical, 5)
-                .background(Capsule().fill(.white.opacity(0.08)))
+                .background(Capsule().fill(Color.panelInk.opacity(0.08)))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -199,11 +199,11 @@ struct AskDetail: View {
     private func failure(_ message: String) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "exclamationmark.circle")
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(Color.panelInk.opacity(0.8))
             VStack(alignment: .leading, spacing: 8) {
                 Text(message)
                     .font(.system(size: 13))
-                    .foregroundStyle(.white.opacity(0.9))
+                    .foregroundStyle(Color.panelInk.opacity(0.9))
                     .fixedSize(horizontal: false, vertical: true)
                 footerButton("Try again", symbol: "arrow.clockwise") { service.ask(service.question) }
             }
@@ -222,22 +222,22 @@ struct AskDetail: View {
             TileBadge(size: 44) {
                 Image(systemName: "sparkle")
                     .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.panelInk)
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text("Ask Claude anything")
                     .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.panelInk)
                 Text("Paste an Anthropic API key to start. It is kept in your Keychain and only ever sent to Anthropic.")
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(Color.panelInk.opacity(0.7))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            SecureField("", text: $key, prompt: Text("sk-ant-…").foregroundStyle(.white.opacity(0.4)))
+            SecureField("", text: $key, prompt: Text("sk-ant-…").foregroundStyle(Color.panelInk.opacity(0.4)))
                 .textFieldStyle(.plain)
                 .font(.system(size: 13, design: .monospaced))
-                .foregroundStyle(.white)
-                .tint(.white)
+                .foregroundStyle(Color.panelInk)
+                .tint(Color.panelInk)
                 .focused($focused)
                 .onSubmit(saveKey)
                 .padding(.horizontal, 12)
@@ -246,7 +246,7 @@ struct AskDetail: View {
             HStack {
                 Link("Get a key", destination: URL(string: "https://console.anthropic.com/settings/keys")!)
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(Color.panelInk.opacity(0.75))
                 Spacer()
                 footerButton("Save", symbol: "key.fill", action: saveKey)
                     .disabled(key.isEmpty)
@@ -289,12 +289,12 @@ private struct AskBlockView: View {
         case .answer:
             Text(block.text ?? "")
                 .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.panelInk)
                 .fixedSize(horizontal: false, vertical: true)
         case .text:
             Text(markdown(block.text ?? ""))
                 .font(.system(size: 13))
-                .foregroundStyle(.white.opacity(0.88))
+                .foregroundStyle(Color.panelInk.opacity(0.88))
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         case .facts:
@@ -311,13 +311,13 @@ private struct AskBlockView: View {
                         Text("\(index + 1)")
                             .font(.system(size: 10, weight: .bold))
                             .monospacedDigit()
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color.panelInk)
                             .frame(width: 18, height: 18)
-                            .background(Circle().fill(.white.opacity(0.14)))
+                            .background(Circle().fill(Color.panelInk.opacity(0.14)))
                             .alignmentGuide(.firstTextBaseline) { $0[.bottom] - 5 }
                         Text(markdown(item))
                             .font(.system(size: 13))
-                            .foregroundStyle(.white.opacity(0.9))
+                            .foregroundStyle(Color.panelInk.opacity(0.9))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -326,11 +326,11 @@ private struct AskBlockView: View {
             VStack(alignment: .leading, spacing: 5) {
                 ForEach(Array((block.items ?? []).enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Circle().fill(.white.opacity(0.5)).frame(width: 4, height: 4)
+                        Circle().fill(Color.panelInk.opacity(0.5)).frame(width: 4, height: 4)
                             .alignmentGuide(.firstTextBaseline) { $0[.bottom] + 3 }
                         Text(markdown(item))
                             .font(.system(size: 13))
-                            .foregroundStyle(.white.opacity(0.9))
+                            .foregroundStyle(Color.panelInk.opacity(0.9))
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -339,13 +339,13 @@ private struct AskBlockView: View {
             code
         case .callout:
             HStack(alignment: .top, spacing: 10) {
-                RoundedRectangle(cornerRadius: 1.5).fill(.white.opacity(0.6)).frame(width: 3)
+                RoundedRectangle(cornerRadius: 1.5).fill(Color.panelInk.opacity(0.6)).frame(width: 3)
                 Image(systemName: "lightbulb")
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(Color.panelInk.opacity(0.75))
                 Text(markdown(block.text ?? ""))
                     .font(.system(size: 12.5))
-                    .foregroundStyle(.white.opacity(0.88))
+                    .foregroundStyle(Color.panelInk.opacity(0.88))
                     .fixedSize(horizontal: false, vertical: true)
             }
             // Sized to its text: the accent bar alone would otherwise take
@@ -368,7 +368,7 @@ private struct AskBlockView: View {
             HStack {
                 Text((block.language ?? "code").lowercased())
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(Color.panelInk.opacity(0.5))
                 Spacer()
                 Button {
                     NSPasteboard.general.clearContents()
@@ -376,7 +376,7 @@ private struct AskBlockView: View {
                 } label: {
                     Image(systemName: "doc.on.doc")
                         .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(Color.panelInk.opacity(0.7))
                         .contentShape(.rect)
                 }
                 .buttonStyle(.plain)
@@ -385,14 +385,14 @@ private struct AskBlockView: View {
             ScrollView(.horizontal) {
                 Text(block.text ?? "")
                     .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.92))
+                    .foregroundStyle(Color.panelInk.opacity(0.92))
                     .textSelection(.enabled)
                     .fixedSize()
             }
             .scrollIndicators(.never)
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(.black.opacity(0.32)))
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.panelInk.opacity(0.08)))
     }
 
     private var table: some View {
@@ -403,12 +403,12 @@ private struct AskBlockView: View {
                     ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
                         Text(cell)
                             .font(.system(size: 12, weight: index == 0 ? .semibold : .regular))
-                            .foregroundStyle(.white.opacity(index == 0 ? 0.95 : 0.85))
+                            .foregroundStyle(Color.panelInk.opacity(index == 0 ? 0.95 : 0.85))
                             .monospacedDigit()
                     }
                 }
                 if index == 0 {
-                    Rectangle().fill(.white.opacity(0.12)).frame(height: 0.5).gridCellUnsizedAxes(.horizontal)
+                    Rectangle().fill(Color.panelInk.opacity(0.12)).frame(height: 0.5).gridCellUnsizedAxes(.horizontal)
                 }
             }
         }
@@ -424,20 +424,20 @@ private struct AskBlockView: View {
             Button { NSWorkspace.shared.open(url) } label: {
                 HStack(spacing: 9) {
                     Image(systemName: "globe")
-                        .foregroundStyle(.white.opacity(0.75))
+                        .foregroundStyle(Color.panelInk.opacity(0.75))
                     VStack(alignment: .leading, spacing: 1) {
                         Text(block.text ?? url.host() ?? url.absoluteString)
                             .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color.panelInk)
                         Text(url.host() ?? "")
                             .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.55))
+                            .foregroundStyle(Color.panelInk.opacity(0.55))
                     }
                     .lineLimit(1)
                     Spacer()
                     Image(systemName: "arrow.up.right")
                         .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(Color.panelInk.opacity(0.6))
                 }
                 .padding(10)
                 .glassPane(cornerRadius: 10)
@@ -452,24 +452,24 @@ private struct AskBlockView: View {
             HStack(spacing: 8) {
                 Image(systemName: "terminal")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.panelInk)
                 Text("Continue in Claude Code")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.panelInk)
             }
             if let text = block.text {
                 Text(text)
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(Color.panelInk.opacity(0.75))
                     .fixedSize(horizontal: false, vertical: true)
             }
             Button { AskService.handOff(block.prompt ?? block.text ?? "") } label: {
                 Text("Open in Terminal")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.panelInk)
                     .frame(maxWidth: .infinity)
                     .frame(height: 30)
-                    .background(Capsule().fill(.white.opacity(0.22)))
+                    .background(Capsule().fill(Color.panelInk.opacity(0.22)))
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -505,10 +505,10 @@ private struct AskThinking: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Thinking" + String(repeating: ".", count: Int(t * 2.5) % 4))
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color.panelInk)
                         Text(question)
                             .font(.system(size: 12))
-                            .foregroundStyle(.white.opacity(0.55))
+                            .foregroundStyle(Color.panelInk.opacity(0.55))
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
@@ -527,18 +527,18 @@ private struct AskThinking: View {
         let breathe = 1 + 0.06 * sin(t * 2.4)
         return ZStack {
             Circle()
-                .fill(.white.opacity(0.06))
+                .fill(Color.panelInk.opacity(0.06))
             Circle()
                 .strokeBorder(
-                    AngularGradient(colors: [.white.opacity(0.05), .white.opacity(0.85),
+                    AngularGradient(colors: [Color.panelInk.opacity(0.05), Color.panelInk.opacity(0.85),
                                              Color(hex: PaletteColor.indigo.hex).opacity(0.6),
-                                             .white.opacity(0.05)],
+                                             Color.panelInk.opacity(0.05)],
                                     center: .center),
                     lineWidth: 1.6)
                 .rotationEffect(.degrees(t * 120))
             Image(systemName: "sparkle")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.panelInk)
                 .scaleEffect(breathe)
                 .opacity(0.75 + 0.25 * sin(t * 2.4))
         }
@@ -551,9 +551,9 @@ private struct AskThinking: View {
             let w = geo.size.width * width
             let phase = (t.truncatingRemainder(dividingBy: 1.6)) / 1.6
             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(.white.opacity(0.08))
+                .fill(Color.panelInk.opacity(0.08))
                 .overlay {
-                    LinearGradient(colors: [.clear, .white.opacity(0.22), .clear],
+                    LinearGradient(colors: [.clear, Color.panelInk.opacity(0.22), .clear],
                                    startPoint: .leading, endPoint: .trailing)
                         .frame(width: w * 0.45)
                         .offset(x: -w * 0.45 + (w * 1.45) * phase)
@@ -573,7 +573,7 @@ private struct AskDots: View {
             HStack(spacing: 5) {
                 ForEach(0..<3, id: \.self) { i in
                     Circle()
-                        .fill(.white.opacity(0.7))
+                        .fill(Color.panelInk.opacity(0.7))
                         .frame(width: 5, height: 5)
                         .offset(y: -3 * max(0, sin(t * 5 - Double(i) * 0.7)))
                         .opacity(0.45 + 0.55 * max(0, sin(t * 5 - Double(i) * 0.7)))

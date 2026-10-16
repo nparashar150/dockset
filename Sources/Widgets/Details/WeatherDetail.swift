@@ -129,7 +129,7 @@ struct WeatherDetail: View {
             Spacer(minLength: 0)
             Image(systemName: weather.symbolName)
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.panelInk)
                 .font(.system(size: 42))
                 // A slow breath, so the reading looks alive without anything
                 // in it pretending to change faster than MET publishes.
@@ -348,7 +348,7 @@ struct WeatherDetail: View {
                 .monospacedDigit()
             Image(systemName: symbol)
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.panelInk)
                 .font(.system(size: 13))
                 .frame(height: 16)
             Text(degrees(celsius))
@@ -363,7 +363,7 @@ struct WeatherDetail: View {
         .background {
             if lit {
                 RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(.white.opacity(0.1))
+                    .fill(Color.panelInk.opacity(0.1))
             }
         }
     }
@@ -389,7 +389,7 @@ struct WeatherDetail: View {
                 Text(WeatherService.attribution)
             }
             .font(WidgetStyle.caption(10))
-            .foregroundStyle(.white.opacity(0.45))
+            .foregroundStyle(Color.panelInk.opacity(0.45))
             .lineLimit(1)
             .minimumScaleFactor(0.8)
         }

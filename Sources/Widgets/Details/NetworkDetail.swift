@@ -77,20 +77,20 @@ struct NetworkDetail: View {
                             .foregroundStyle(WidgetStyle.primary)
                         Text(link.id)
                             .font(WidgetStyle.caption(11))
-                            .foregroundStyle(.white.opacity(0.5))
+                            .foregroundStyle(Color.panelInk.opacity(0.5))
                         if link.isPrimary {
                             Text("In use")
                                 .font(.system(size: 9, weight: .semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(Color.panelInk)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
-                                .background(Capsule().fill(.white.opacity(0.18)))
+                                .background(Capsule().fill(Color.panelInk.opacity(0.18)))
                         }
                     }
                     ForEach([link.ipv4, link.ipv6].compactMap(\.self), id: \.self) { address in
                         Text(address)
                             .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.75))
+                            .foregroundStyle(Color.panelInk.opacity(0.75))
                             .textSelection(.enabled)
                     }
                 }
@@ -164,7 +164,7 @@ struct NetworkDetail: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(window >= NetworkMetrics.historyLength ? "Last minute" : "Last \(window)s")
                 .font(WidgetStyle.caption(10))
-                .foregroundStyle(.white.opacity(0.45))
+                .foregroundStyle(Color.panelInk.opacity(0.45))
             AreaHistory(series: [
                             showsDownload ? AreaHistory.Series(name: "Down", samples: downloadHistory,
                                                                color: Color(hex: MetricColor.netDownload)) : nil,

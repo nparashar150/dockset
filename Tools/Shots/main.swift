@@ -559,6 +559,8 @@ private func run() async {
 
     // SHOTS_ONLY=clock,weather retakes just those, for iterating on a few
     // panels without sitting through every network wait. Unset, all of them.
+    // SHOTS_SCHEME=light draws the light card instead of the dark one.
+    let light = ProcessInfo.processInfo.environment["SHOTS_SCHEME"] == "light"
     let only = ProcessInfo.processInfo.environment["SHOTS_ONLY"]
         .map { Set($0.split(separator: ",").map(String.init)) }
 
@@ -622,6 +624,8 @@ app.setActivationPolicy(.accessory)
 private func render(to directory: String) async {
     try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
     SystemMetrics.shared.start()
+    // SHOTS_SCHEME=light draws the light card instead of the dark one.
+    let light = ProcessInfo.processInfo.environment["SHOTS_SCHEME"] == "light"
     let only = ProcessInfo.processInfo.environment["SHOTS_ONLY"]
         .map { Set($0.split(separator: ",").map(String.init)) }
     for shot in shots(since: Date()) where only?.contains(shot.name) ?? true {
@@ -637,8 +641,8 @@ private func render(to directory: String) async {
             .padding(16)
             .frame(width: WidgetDetail.width(shot.instance.kind), alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
-            .background(Color(white: 0.16))
-            .environment(\.colorScheme, .dark)
+            .background(light ? Color(white: 0.93) : Color(white: 0.16))
+            .environment(\.colorScheme, light ? .light : .dark)
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
         guard let image = renderer.cgImage,

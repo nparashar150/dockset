@@ -20,7 +20,7 @@ struct ClockDetail: View {
             let now = tick.date
             // On the sky for this hour, with the sun where it is: the panel
             // is the time of day before it is a number.
-            DetailCard {
+            DetailCard(dark: true) {
                 SkyBackdrop(date: now, zone: .current)
             } content: {
                 VStack(alignment: .leading, spacing: 14) {
@@ -28,7 +28,7 @@ struct ClockDetail: View {
                         ClockPanelTime(now: now, zone: .current, size: 46)
                         Text(ClockPanelFormat.fullDate(now, zone: .current))
                             .font(WidgetStyle.label(13))
-                            .foregroundStyle(.white.opacity(0.8))
+                            .foregroundStyle(Color.panelInk.opacity(0.8))
                             .lineLimit(1)
                             .minimumScaleFactor(0.7)
                     }

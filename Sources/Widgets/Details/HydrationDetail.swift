@@ -45,7 +45,7 @@ struct HydrationDetail: View {
                     Text(left > 0 ? "NEXT DRINK AT" : "DUE NOW")
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.8)
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(Color.panelInk.opacity(0.7))
                     // A time of day, which is the thing the tile's countdown is
                     // not: "2:49 PM" is a moment you can plan around, "17:22" is
                     // one you have to do arithmetic on.
@@ -57,7 +57,7 @@ struct HydrationDetail: View {
                         .minimumScaleFactor(0.6)
                     Text(headlineCaption(left, now: now))
                         .font(WidgetStyle.label(13))
-                        .foregroundStyle(.white.opacity(0.8))
+                        .foregroundStyle(Color.panelInk.opacity(0.8))
                         .monospacedDigit()
                 }
 
@@ -98,7 +98,7 @@ struct HydrationDetail: View {
                     Text("TODAY")
                         .font(.system(size: 9, weight: .semibold))
                         .tracking(0.6)
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(Color.panelInk.opacity(0.6))
                     Spacer()
                     Text("\(Int(total)) of \(Int(goal)) mL")
                         .font(WidgetStyle.label(12))
@@ -120,14 +120,14 @@ struct HydrationDetail: View {
                         .monospacedDigit()
                     if drink.millilitres > 0 {
                         Text("\(Int(drink.millilitres)) mL")
-                            .foregroundStyle(.white.opacity(0.7))
+                            .foregroundStyle(Color.panelInk.opacity(0.7))
                     }
                     Spacer()
                     Button {
                         remove(drink)
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.white.opacity(0.5))
+                            .foregroundStyle(Color.panelInk.opacity(0.5))
                     }
                     .buttonStyle(.plain)
                     .help("Remove this drink")
@@ -140,10 +140,10 @@ struct HydrationDetail: View {
                 Button("Undo removal") { restore(removed) }
                     .buttonStyle(.plain)
                     .font(WidgetStyle.label(11))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.panelInk)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(Capsule().fill(.white.opacity(0.14)))
+                    .background(Capsule().fill(Color.panelInk.opacity(0.14)))
             }
         }
         .padding(10)
@@ -163,7 +163,7 @@ struct HydrationDetail: View {
                         .frame(height: max(2, 28 * fraction))
                 }
                 .frame(maxWidth: .infinity, maxHeight: 28)
-                .background(RoundedRectangle(cornerRadius: 2).fill(.white.opacity(0.06)))
+                .background(RoundedRectangle(cornerRadius: 2).fill(Color.panelInk.opacity(0.06)))
             }
         }
         .accessibilityElement(children: .ignore)
@@ -214,10 +214,10 @@ struct HydrationDetail: View {
         } label: {
             Label("Log a drink", systemImage: "drop.fill")
                 .font(WidgetStyle.label(13))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.panelInk)
                 .frame(maxWidth: .infinity)
                 .frame(height: 38)
-                .background(Capsule().fill(.white.opacity(0.24)))
+                .background(Capsule().fill(Color.panelInk.opacity(0.24)))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -310,16 +310,18 @@ private struct Water: View {
     var phase: Double
     var colour: Color
 
+    @Environment(\.colorScheme) private var scheme
+
     var body: some View {
         GeometryReader { geo in
             let size = geo.size
             let top = size.height * (1 - min(1, max(0.04, level)))
             ZStack {
                 surface(size, top: top, shift: phase + 0.5, amplitude: 5)
-                    .fill(MeshBackdrop.muted(colour).opacity(0.5))
+                    .fill(MeshBackdrop.muted(colour, on: scheme).opacity(0.5))
                 surface(size, top: top + 3, shift: phase, amplitude: 4)
-                    .fill(LinearGradient(colors: [MeshBackdrop.muted(colour, by: 0.62),
-                                                  MeshBackdrop.muted(colour, by: 0.85)],
+                    .fill(LinearGradient(colors: [MeshBackdrop.muted(colour, by: 0.62, on: scheme),
+                                                  MeshBackdrop.muted(colour, by: 0.85, on: scheme)],
                                          startPoint: .top, endPoint: .bottom))
             }
             .animation(.smooth(duration: 0.8), value: level)

@@ -41,12 +41,12 @@ struct TimeProgressDetail: View {
                                 .rollingValue(Int(gone * 100))
                             Text("%")
                                 .font(.system(size: 22, weight: .light))
-                                .foregroundStyle(.white.opacity(0.7))
+                                .foregroundStyle(Color.panelInk.opacity(0.7))
                         }
                         .monospacedDigit()
                         Text("of \(shown.title(now)) gone")
                             .font(WidgetStyle.label(13))
-                            .foregroundStyle(.white.opacity(0.75))
+                            .foregroundStyle(Color.panelInk.opacity(0.75))
                     }
 
                     VStack(spacing: 5) {
@@ -113,7 +113,7 @@ struct TimeProgressDetail: View {
         // the three the card behind it is answering.
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(.white.opacity(span.rawValue == period ? 0.55 : 0), lineWidth: 1)
+                .strokeBorder(Color.panelInk.opacity(span.rawValue == period ? 0.55 : 0), lineWidth: 1)
         }
         // One row is one fact; read out as four labels it becomes a mouthful.
         .accessibilityElement(children: .combine)
@@ -141,9 +141,9 @@ struct TimeProgressDetail: View {
     private func bar(_ fraction: Double) -> some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.14))
+                Capsule().fill(Color.panelInk.opacity(0.14))
                 Capsule()
-                    .fill(.white.opacity(0.8))
+                    .fill(Color.panelInk.opacity(0.8))
                     .frame(width: geometry.size.width * fraction)
             }
         }

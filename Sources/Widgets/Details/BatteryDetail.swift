@@ -110,24 +110,24 @@ struct BatteryDetail: View {
                             .rollingValue(value)
                         Text("%")
                             .font(.system(size: 24, weight: .light))
-                            .foregroundStyle(.white.opacity(0.7))
+                            .foregroundStyle(Color.panelInk.opacity(0.7))
                     }
                 } else {
                     // A dash, never a zero: a device that is not here has no
                     // level.
                     Text("-")
                         .font(.system(size: 48, weight: .light))
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(Color.panelInk.opacity(0.7))
                 }
                 Text(caption(device))
                     .font(WidgetStyle.label(12))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(Color.panelInk.opacity(0.75))
             }
             Spacer(minLength: 0)
             if device.charging {
                 Image(systemName: "bolt.fill")
                     .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(Color.panelInk.opacity(0.85))
                     .padding(.bottom, 6)
             }
         }

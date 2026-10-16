@@ -82,7 +82,7 @@ struct CalendarDetail: View {
                 Text(day.formatted(.dateTime.weekday(.wide)).uppercased())
                     .font(.system(size: 11, weight: .semibold))
                     .tracking(0.8)
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(Color.panelInk.opacity(0.8))
                 Text(day.formatted(.dateTime.month(.wide).year()))
                     .font(WidgetStyle.label(14))
                     .foregroundStyle(WidgetStyle.primary)
@@ -111,10 +111,10 @@ struct CalendarDetail: View {
         } label: {
             Text("Calendars…")
                 .font(WidgetStyle.label(11))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.panelInk)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(.white.opacity(0.14), in: .capsule)
+                .background(Color.panelInk.opacity(0.14), in: .capsule)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -130,7 +130,7 @@ struct CalendarDetail: View {
         if timed.isEmpty, allDay.isEmpty {
             Text("Nothing scheduled today.")
                 .font(WidgetStyle.label(13))
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(Color.panelInk.opacity(0.8))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
                 .glassPane()
@@ -154,7 +154,7 @@ struct CalendarDetail: View {
                     Text("ALL DAY")
                         .font(.system(size: 9, weight: .semibold))
                         .tracking(0.6)
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(Color.panelInk.opacity(0.6))
                     ForEach(shownAllDay) { event in
                         row(event, detail: event.calendar)
                     }
@@ -164,7 +164,7 @@ struct CalendarDetail: View {
             if hidden > 0 {
                 Text("\(hidden) more today")
                     .font(WidgetStyle.caption(11))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(Color.panelInk.opacity(0.6))
             }
         }
     }
@@ -182,7 +182,7 @@ struct CalendarDetail: View {
                     .foregroundStyle(WidgetStyle.primary)
                 Text(detail)
                     .font(WidgetStyle.caption(11))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(Color.panelInk.opacity(0.7))
             }
             Spacer(minLength: 0)
             // Any call still to come, not only the imminent one the tile
@@ -211,7 +211,7 @@ struct CalendarDetail: View {
                  ? "Docket has not been given access to your calendar."
                  : "Calendar access is off for Docket.")
                 .font(WidgetStyle.caption(12))
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(Color.panelInk.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)
             // Once the answer is no, asking again returns it unchanged with no
             // prompt on screen, so the only button worth drawing is the one
@@ -232,10 +232,10 @@ struct CalendarDetail: View {
         } label: {
             Text(title)
                 .font(WidgetStyle.label(13))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.panelInk)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
-                .background(Capsule().fill(.white.opacity(0.14)))
+                .background(Capsule().fill(Color.panelInk.opacity(0.14)))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)

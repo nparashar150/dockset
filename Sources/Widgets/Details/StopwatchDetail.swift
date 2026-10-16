@@ -58,7 +58,7 @@ struct StopwatchDetail: View {
 
                     Text(caption)
                         .font(WidgetStyle.label(12))
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(Color.panelInk.opacity(0.7))
                         .lineLimit(1)
                 }
                 .padding(.top, 6)
@@ -144,7 +144,7 @@ private struct SweepDial: View {
         ZStack {
             ForEach(0..<60, id: \.self) { tick in
                 Capsule()
-                    .fill(.white.opacity(tick % 5 == 0 ? 0.22 : 0.1))
+                    .fill(Color.panelInk.opacity(tick % 5 == 0 ? 0.22 : 0.1))
                     .frame(width: tick % 5 == 0 ? 2 : 1, height: tick % 5 == 0 ? 10 : 6)
                     .offset(y: -105)
                     .rotationEffect(.degrees(Double(tick) * 6))
@@ -174,21 +174,21 @@ struct ClockPanelButton: View {
     var fill: Color?
     /// Ink on the solid form. White on a saturated fill, the card's own colour
     /// on a white one.
-    var ink: Color = .white
+    var ink: Color = Color.panelInk
     var action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text(title)
                 .font(WidgetStyle.label(13))
-                .foregroundStyle(fill == nil ? Color.white : ink)
+                .foregroundStyle(fill == nil ? Color.panelInk : ink)
                 .frame(maxWidth: .infinity)
                 .frame(height: 36)
                 .background {
                     Capsule()
-                        .fill(fill ?? Color.white.opacity(0.14))
+                        .fill(fill ?? Color.panelInk.opacity(0.14))
                         .overlay {
-                            Capsule().strokeBorder(.white.opacity(fill == nil ? 0.18 : 0), lineWidth: 0.5)
+                            Capsule().strokeBorder(Color.panelInk.opacity(fill == nil ? 0.18 : 0), lineWidth: 0.5)
                         }
                 }
                 .contentShape(Capsule())

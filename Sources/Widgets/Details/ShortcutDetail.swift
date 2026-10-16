@@ -40,9 +40,9 @@ struct ShortcutDetail: View {
                 outcome
                 chooser
                 HStack(spacing: 8) {
-                    button("Open Shortcuts", fill: .white.opacity(0.24), label: .white, action: openShortcuts)
+                    button("Open Shortcuts", fill: Color.panelInk.opacity(0.24), label: Color.panelInk, action: openShortcuts)
                     if !chosen.isEmpty {
-                        button("Clear", fill: .white.opacity(0.14), label: .white) {
+                        button("Clear", fill: Color.panelInk.opacity(0.14), label: Color.panelInk) {
                             WidgetWriter.write(instance) { $0.set("name", .string("")) }
                         }
                     }
@@ -62,7 +62,7 @@ struct ShortcutDetail: View {
                 Text(running ? "RUNNING" : chosen.isEmpty ? "PICK ONE BELOW" : "READY")
                     .font(.system(size: 9, weight: .semibold))
                     .tracking(0.6)
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(Color.panelInk.opacity(0.6))
                 Text(chosen.isEmpty ? "No shortcut chosen" : chosen)
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(WidgetStyle.primary)
@@ -76,10 +76,10 @@ struct ShortcutDetail: View {
                 } label: {
                     Image(systemName: running ? "stop.fill" : "play.fill")
                         .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color.panelInk)
                         .offset(x: running ? 0 : 1.5)
                         .frame(width: 48, height: 48)
-                        .background(.white.opacity(0.24), in: .circle)
+                        .background(Color.panelInk.opacity(0.24), in: .circle)
                         .contentShape(.circle)
                 }
                 .buttonStyle(.plain)
@@ -117,7 +117,7 @@ struct ShortcutDetail: View {
                 if service.names.count > Self.visibleRows {
                     Text("and \(service.names.count - Self.visibleRows) more, in Shortcuts")
                         .font(WidgetStyle.caption(10))
-                        .foregroundStyle(.white.opacity(0.6))
+                        .foregroundStyle(Color.panelInk.opacity(0.6))
                 }
             }
             .padding(10)
@@ -132,7 +132,7 @@ struct ShortcutDetail: View {
             HStack(spacing: 6) {
                 Image(systemName: name == chosen ? "checkmark.circle.fill" : "circle")
                     .font(.system(size: 11))
-                    .foregroundStyle(name == chosen ? Color.white : .white.opacity(0.5))
+                    .foregroundStyle(name == chosen ? Color.panelInk : Color.panelInk.opacity(0.5))
                 Text(name)
                     .font(WidgetStyle.label(12))
                     .foregroundStyle(WidgetStyle.primary)
@@ -147,7 +147,7 @@ struct ShortcutDetail: View {
     private func note(_ text: String, tint: Color?) -> some View {
         Text(text)
             .font(WidgetStyle.caption(11))
-            .foregroundStyle(tint ?? .white.opacity(0.7))
+            .foregroundStyle(tint ?? Color.panelInk.opacity(0.7))
             .fixedSize(horizontal: false, vertical: true)
     }
 

@@ -107,14 +107,14 @@ struct RemindersDetail: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(rows.isEmpty ? "Nothing due today" : "due by tonight")
                         .font(WidgetStyle.label(14))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(Color.panelInk.opacity(0.85))
                     // Which list this is a view of, when it is not all of them
                     // - otherwise the count reads as the whole account and is
                     // not.
                     if !listFilter.isEmpty {
                         Text(listFilter)
                             .font(WidgetStyle.caption(11))
-                            .foregroundStyle(.white.opacity(0.65))
+                            .foregroundStyle(Color.panelInk.opacity(0.65))
                     }
                 }
             }
@@ -144,8 +144,8 @@ struct RemindersDetail: View {
         let hidden = rows.count - shownOverdue.count - shownToday.count
 
         VStack(alignment: .leading, spacing: 12) {
-            section("Overdue", shownOverdue, tint: .white)
-            section("Today", shownToday, tint: .white.opacity(0.7))
+            section("Overdue", shownOverdue, tint: Color.panelInk)
+            section("Today", shownToday, tint: Color.panelInk.opacity(0.7))
             if hidden > 0 {
                 Text("\(hidden) more in Reminders")
                     .font(WidgetStyle.caption(11))
@@ -247,10 +247,10 @@ struct RemindersDetail: View {
         } label: {
             Text(title)
                 .font(WidgetStyle.label(13))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.panelInk)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
-                .background(Capsule().fill(.white.opacity(0.14)))
+                .background(Capsule().fill(Color.panelInk.opacity(0.14)))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)

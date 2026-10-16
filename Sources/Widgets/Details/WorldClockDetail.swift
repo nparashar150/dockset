@@ -30,7 +30,7 @@ struct WorldClockDetail: View {
         TimelineView(.periodic(from: .now, by: 1)) { tick in
             let now = tick.date
             // Their sky, not ours: the card is the time of day in the city.
-            DetailCard {
+            DetailCard(dark: true) {
                 SkyBackdrop(date: now, zone: zone)
             } content: {
                 VStack(alignment: .leading, spacing: 8) {

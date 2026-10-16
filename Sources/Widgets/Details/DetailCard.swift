@@ -9,11 +9,15 @@ import SwiftUI
 /// on it, and this is that card for every panel.
 ///
 /// It reaches past the panel's own padding to 6pt from its edge, where a
-/// 14pt corner sits concentric with the panel's 20. The card is always dark,
-/// so the content inside is forced into the dark scheme and every semantic
-/// colour the panels already use (`WidgetStyle.primary`, `.secondary`, the
-/// system controls) reads white on it without being rewritten.
+/// 14pt corner sits concentric with the panel's 20. It follows the app's
+/// appearance: graphite in the dark, soft white in the light, with everything
+/// on it drawn in `Color.panelInk` and the semantic colours, which resolve to
+/// whichever the card is.
+///
+/// `dark` keeps a card dark in both, for the panels whose ground is a picture
+/// - a sky at an hour, a sheet of paper - that white ink was chosen against.
 struct DetailCard<Backdrop: View, Content: View>: View {
+    var dark = false
     @ViewBuilder var backdrop: () -> Backdrop
     @ViewBuilder var content: () -> Content
 
@@ -23,17 +27,19 @@ struct DetailCard<Backdrop: View, Content: View>: View {
     /// at the top and the backdrop fills the rest. See `WidgetDetail.width`.
     static var height: CGFloat { 240 }
 
+    @Environment(\.colorScheme) private var scheme
+
     var body: some View {
         content()
             .padding(16)
             .frame(maxWidth: .infinity, minHeight: Self.height, alignment: .topLeading)
             .background { backdrop() }
-            .environment(\.colorScheme, .dark)
             .clipShape(.rect(cornerRadius: Self.corner, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
-                    .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
+                    .strokeBorder(Color.panelInk.opacity(0.1), lineWidth: 0.5)
             }
+            .environment(\.colorScheme, dark ? .dark : scheme)
             .padding(-Self.bleed)
     }
 }
@@ -54,10 +60,10 @@ struct StatChip: View {
             Text(label.uppercased())
                 .font(.system(size: 9, weight: .semibold))
                 .tracking(0.6)
-                .foregroundStyle(.white.opacity(0.55))
+                .foregroundStyle(Color.panelInk.opacity(0.55))
             Text(value)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.panelInk)
                 .monospacedDigit()
                 .rollingValue(value)
         }
@@ -76,11 +82,11 @@ extension View {
     func glassPane(cornerRadius: CGFloat = 12) -> some View {
         background {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .fill(.white.opacity(0.09))
+                .fill(Color.panelInk.opacity(0.09))
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .strokeBorder(
-                            LinearGradient(colors: [.white.opacity(0.22), .white.opacity(0.04)],
+                            LinearGradient(colors: [Color.panelInk.opacity(0.22), Color.panelInk.opacity(0.04)],
                                            startPoint: .top, endPoint: .bottom),
                             lineWidth: 0.5)
                 }
@@ -108,23 +114,36 @@ struct MeshBackdrop: View {
 
     /// A colour taken most of the way to graphite: for surfaces that have to
     /// keep a meaning (water, a sky) without becoming the loudest thing.
-    static func muted(_ colour: Color, by amount: Double = 0.72) -> Color {
-        colour.mix(with: graphite, by: amount)
+    ///
+    /// Toward paper instead on the light card, where a colour pulled to
+    /// graphite would be a dark slab under dark ink.
+    static func muted(_ colour: Color, by amount: Double = 0.72,
+                      on scheme: ColorScheme = .dark) -> Color {
+        colour.mix(with: scheme == .dark ? graphite : paper, by: amount)
     }
 
+    /// The light card's ground: warm white rather than pure, so it sits in
+    /// the popover's material instead of glaring out of it.
+    static let paper = Color(red: 0.965, green: 0.965, blue: 0.97)
+
+    @Environment(\.colorScheme) private var scheme
+
     var body: some View {
-        let base = Self.graphite
+        let dark = scheme == .dark
+        let base = dark ? Self.graphite : Self.paper
         ZStack {
             LinearGradient(stops: [
-                .init(color: base.mix(with: .white, by: 0.07), location: 0),
+                .init(color: base.mix(with: .white, by: dark ? 0.07 : 0.6), location: 0),
                 .init(color: base, location: 0.45),
-                .init(color: base.mix(with: .black, by: 0.4), location: 1),
+                .init(color: base.mix(with: .black, by: dark ? 0.4 : 0.04), location: 1),
             ], startPoint: .top, endPoint: .bottom)
-            RadialGradient(colors: [color.opacity(Self.hint), .clear],
+            // A little stronger on white, where the same opacity all but
+            // vanishes.
+            RadialGradient(colors: [color.opacity(dark ? Self.hint : Self.hint * 1.4), .clear],
                            center: .topLeading, startRadius: 0, endRadius: 280)
             // A sheen along the top edge, the way light catches the lip of
             // an aluminium case.
-            LinearGradient(colors: [.white.opacity(0.06), .clear],
+            LinearGradient(colors: [.white.opacity(dark ? 0.06 : 0.5), .clear],
                            startPoint: .top, endPoint: UnitPoint(x: 0.5, y: 0.18))
         }
     }
@@ -155,7 +174,7 @@ struct SkyBackdrop: View {
                 LinearGradient(colors: colors, startPoint: .top, endPoint: .bottom)
                 if !isDay { stars(in: size) }
                 path(in: size)
-                    .stroke(.white.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [2, 4]))
+                    .stroke(Color.panelInk.opacity(0.18), style: StrokeStyle(lineWidth: 1, dash: [2, 4]))
                 orb(in: size)
             }
         }
@@ -211,7 +230,7 @@ struct SkyBackdrop: View {
         ]
         return ForEach(Array(spots.enumerated()), id: \.offset) { _, spot in
             Circle()
-                .fill(.white.opacity(0.55))
+                .fill(Color.panelInk.opacity(0.55))
                 .frame(width: spot.2, height: spot.2)
                 .position(x: size.width * spot.0, y: size.height * spot.1)
         }
@@ -256,7 +275,7 @@ struct TickMeter: View {
             HStack(spacing: 3) {
                 ForEach(0..<count, id: \.self) { index in
                     Capsule()
-                        .fill(.white.opacity(index < lit ? 0.88 : 0.1))
+                        .fill(Color.panelInk.opacity(index < lit ? 0.88 : 0.1))
                         .frame(width: 3)
                 }
             }
@@ -322,7 +341,7 @@ struct AreaHistory: View {
         .chartXAxis(.hidden)
         .chartYAxis {
             AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                AxisGridLine().foregroundStyle(.white.opacity(0.08))
+                AxisGridLine().foregroundStyle(Color.panelInk.opacity(0.08))
             }
         }
         .chartLegend(.hidden)

@@ -46,7 +46,7 @@ struct AlarmDetail: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(name.isEmpty ? "Alarm" : name)
                         .font(WidgetStyle.label(14))
-                        .foregroundStyle(.white.opacity(0.8))
+                        .foregroundStyle(Color.panelInk.opacity(0.8))
                         .lineLimit(1)
                     Text(next.formatted(.dateTime.hour().minute()))
                         .font(.system(size: 60, weight: .light, design: .rounded))
@@ -82,17 +82,17 @@ struct AlarmDetail: View {
             HStack(spacing: 10) {
                 Image(systemName: enabled ? "bell.fill" : "bell.slash.fill")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(enabled ? Self.orange : .white.opacity(0.6))
+                    .foregroundStyle(enabled ? Self.orange : Color.panelInk.opacity(0.6))
                     .frame(width: 20)
                 Text(enabled ? "On" : "Silenced")
                     .font(WidgetStyle.label(13))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.panelInk)
                 Spacer(minLength: 8)
                 Capsule()
-                    .fill(enabled ? Self.orange : Color.white.opacity(0.18))
+                    .fill(enabled ? Self.orange : Color.panelInk.opacity(0.18))
                     .frame(width: 42, height: 24)
                     .overlay(alignment: enabled ? .trailing : .leading) {
-                        Circle().fill(.white).padding(2.5).shadow(radius: 1)
+                        Circle().fill(Color.panelInk).padding(2.5).shadow(radius: 1)
                     }
             }
             .padding(.horizontal, 12)

@@ -31,7 +31,7 @@ struct RevenueDetail: View {
                     metricRow
                     Text(caption)
                         .font(WidgetStyle.caption(12))
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(Color.panelInk.opacity(0.7))
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 // The empty state alone. An "About this metric" pane under it
@@ -61,7 +61,7 @@ struct RevenueDetail: View {
             Text(account.uppercased())
                 .font(.system(size: 10, weight: .semibold))
                 .tracking(0.6)
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(Color.panelInk.opacity(0.75))
                 .lineLimit(1)
                 .truncationMode(.middle)
         }
@@ -77,10 +77,10 @@ struct RevenueDetail: View {
             Spacer(minLength: 8)
             Text(periodShort)
                 .font(WidgetStyle.label(11))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.panelInk)
                 .padding(.horizontal, 9)
                 .padding(.vertical, 4)
-                .background(Capsule().fill(.white.opacity(0.18)))
+                .background(Capsule().fill(Color.panelInk.opacity(0.18)))
                 .fixedSize()
         }
     }
@@ -92,20 +92,20 @@ struct RevenueDetail: View {
         VStack(alignment: .leading, spacing: 6) {
             Image(systemName: "link.badge.plus")
                 .font(.system(size: 22, weight: .medium))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(Color.panelInk.opacity(0.85))
             Text("Not connected")
                 .font(WidgetStyle.value(20))
                 .foregroundStyle(WidgetStyle.primary)
             Text("Docket holds no \(provider) credentials, so there is no amount to show and no history to chart.")
                 .font(WidgetStyle.caption(12))
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(Color.panelInk.opacity(0.7))
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(.white.opacity(0.4),
+                .strokeBorder(Color.panelInk.opacity(0.4),
                               style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
         }
     }

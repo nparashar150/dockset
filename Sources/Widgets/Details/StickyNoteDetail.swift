@@ -45,7 +45,7 @@ struct StickyNoteDetail: View {
         // padding, so it stood a good 10pt further in from the edge than any
         // other panel's card, and read as a sheet in a frame rather than as
         // the panel.
-        DetailCard {
+        DetailCard(dark: true) {
             paper
         } content: {
             // Return finishes the note and Shift-Return breaks the line, which
