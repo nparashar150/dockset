@@ -57,18 +57,18 @@ struct NetworkActivityTile: View {
         .minimumScaleFactor(0.6)
     }
 
+    /// The stock tile's dithered chart: download stippled in, upload a line
+    /// over it, both on one scale so they stay comparable.
     private var chart: some View {
-        // Both series share one scale, so the lines stay comparable.
-        let peak = max(downloadHistory.max() ?? 0, uploadHistory.max() ?? 0, 1)
+        let peak = max(downloadHistory.max() ?? 0, uploadHistory.max() ?? 0, 1024)
         return ZStack {
             if showsDownload {
-                Sparkline(values: downloadHistory, peak: peak)
-                    .stroke(Color(hex: MetricColor.netDownload), lineWidth: 1.5)
+                DitherChart(samples: downloadHistory, tint: Color(hex: MetricColor.netDownload),
+                            range: 0...peak, lineWidth: 1.25)
             }
             if showsUpload {
-                Sparkline(values: uploadHistory, peak: peak)
-                    .stroke(Color(hex: MetricColor.netUpload),
-                            style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [3, 2]))
+                DitherChart(samples: uploadHistory, tint: Color(hex: MetricColor.netUpload),
+                            filled: !showsDownload, range: 0...peak, lineWidth: 1.25)
             }
         }
     }
@@ -95,16 +95,20 @@ struct NetworkActivityTile: View {
     private func columnRow(_ symbol: String, _ bytesPerSecond: Double, _ tint: Color) -> some View {
         let rate = formatted(bytesPerSecond)
         return HStack(spacing: 3) {
+            // Grey arrows, as on the wide card: direction is the arrow's
+            // shape, and colour on it outshouted the figure beside it.
             Image(systemName: symbol)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(tint)
-            Text(rate.value)
-                .font(.system(size: 15, weight: .bold))
-                .monospacedDigit()
-                .foregroundStyle(WidgetStyle.primary)
-            Text(rate.unit)
-                .font(WidgetStyle.caption(9))
+                .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(WidgetStyle.secondary)
+            // One run of text, as on the wide card, so the figure and its
+            // unit shrink together instead of the figure being cut to "2...".
+            (Text(rate.value)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(WidgetStyle.primary)
+             + Text(" \(rate.unit)")
+                .font(.system(size: 9))
+                .foregroundStyle(WidgetStyle.secondary))
+                .monospacedDigit()
         }
         .lineLimit(1)
         .minimumScaleFactor(0.5)
@@ -115,11 +119,11 @@ struct NetworkActivityTile: View {
         return ZStack {
             if showsDownload {
                 Sparkline(values: downloadHistory, peak: peak, closed: true)
-                    .fill(Color(hex: MetricColor.netDownload).opacity(0.16))
+                    .fill(WidgetStyle.primary.opacity(0.08))
             }
             if showsUpload {
                 Sparkline(values: uploadHistory, peak: peak, closed: true)
-                    .fill(Color(hex: MetricColor.netUpload).opacity(0.16))
+                    .fill(WidgetStyle.primary.opacity(0.05))
             }
         }
         .padding(.vertical, 6)

@@ -170,6 +170,29 @@ public final class AppCatalog {
         }
     }
 
+    /// Empties the Trash by asking Finder, the way the Dock's own menu does.
+    ///
+    /// Through Finder rather than deleting the files: listing `~/.Trash` needs
+    /// Full Disk Access, and Finder also empties the Trash on every mounted
+    /// volume, plays the sound and handles locked items. The cost is one
+    /// Automation prompt for Finder, the first time. Finder's scripted empty
+    /// does not ask first, so the caller confirms before this runs.
+    public func emptyTrash() {
+        DispatchQueue.global(qos: .userInitiated).async {
+            var error: NSDictionary?
+            NSAppleScript(source: "tell application id \"com.apple.finder\" to empty trash")?
+                .executeAndReturnError(&error)
+            // -1743: Automation for Finder is off. Silence would read as the
+            // menu item being broken, so go where it can be turned on.
+            guard (error?[NSAppleScript.errorNumber] as? Int) == -1743 else { return }
+            DispatchQueue.main.async {
+                guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
+                else { return }
+                NSWorkspace.shared.open(url)
+            }
+        }
+    }
+
     public func reveal(_ item: DockItem) {
         guard let url = item.fileRef?.resolve() else { return }
         NSWorkspace.shared.activateFileViewerSelecting([url])

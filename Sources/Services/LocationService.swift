@@ -40,6 +40,10 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
     /// Idempotent: the first weather widget to appear starts this, the rest
     /// find it already running.
     func start() {
+        // Whatever Core Location does, an approximate city is asked for
+        // once: see `approximate()`. It is replaced the moment a real fix
+        // arrives, so it costs nothing when location works.
+        if city == nil { Task { await approximate() } }
         guard !asked, !denied else { return }
         asked = true
         switch manager.authorizationStatus {
@@ -90,7 +94,45 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
 
     nonisolated func locationManager(_ manager: CLLocationManager,
                                      didFailWithError error: any Error) {
-        // Nothing to do: the widget keeps whatever city it already had.
+        // Nothing to do: the widget keeps whatever city it already had,
+        // which the approximate lookup has usually supplied by now.
+    }
+
+    // MARK: Approximate
+
+    @ObservationIgnored private var approximating = false
+    @ObservationIgnored private var precise = false
+
+    /// The city the connection appears to be in, from its address.
+    ///
+    /// Core Location's consent prompt is never shown to an app that never
+    /// becomes frontmost (measured; see `start()`), so for most people
+    /// "current location" never resolved and the widget said there was no
+    /// location at all. A city from the network address is what plenty of
+    /// weather apps fall back to, needs no permission, and is right at the
+    /// scale a forecast is. One request, no key; a real fix replaces it.
+    private func approximate() async {
+        guard !approximating, city == nil else { return }
+        approximating = true
+        defer { approximating = false }
+        guard let url = URL(string: "https://ipinfo.io/json") else { return }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let found = (object["city"] as? String)?.trimmingCharacters(in: .whitespaces),
+              !found.isEmpty, !precise
+        else { return }
+        city = found
+        // A city found this way still counts as an answer, so the widget
+        // stops saying it is waiting for one.
+        unavailable = false
+        if let loc = (object["loc"] as? String)?.split(separator: ","), loc.count == 2,
+           let lat = Double(loc[0]), let lon = Double(loc[1]) {
+            coordinate = CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        }
     }
 
     /// Reverse-geocodes to something a person would call the place.
@@ -104,6 +146,7 @@ final class LocationService: NSObject, CLLocationManagerDelegate {
               let context = item.addressRepresentations?.cityWithContext
         else { return }
         let place = context.split(separator: ",").first.map(String.init) ?? context
+        precise = true
         city = place.trimmingCharacters(in: .whitespaces)
     }
 }

@@ -133,6 +133,9 @@ final class GroupWindow {
         let panel = KeyablePanel(contentRect: .zero,
                                  styleMask: [.borderless, .nonactivatingPanel],
                                  backing: .buffered, defer: false)
+        // Escape and Command-W, the same as a widget's panel. Escape while
+        // renaming abandons the unsubmitted name, as it does in Finder.
+        panel.onCancel = { [weak self] in self?.close() }
         panel.contentView = hosting
         panel.isOpaque = false
         panel.backgroundColor = .clear

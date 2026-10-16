@@ -53,6 +53,21 @@ public struct DockPrefs: Codable, Hashable, Sendable {
     }
 }
 
+/// The Dock's hiding preferences as they were before Docket hid it entirely.
+/// A nil field was absent and is deleted again on restore, rather than
+/// written back as a value the user never had.
+public struct DockVisibility: Codable, Hashable, Sendable {
+    public var autoHide: Bool?
+    public var delay: Double?
+    public var timeModifier: Double?
+
+    public init(autoHide: Bool?, delay: Double?, timeModifier: Double?) {
+        self.autoHide = autoHide
+        self.delay = delay
+        self.timeModifier = timeModifier
+    }
+}
+
 public enum DockPosition: String, Codable, Sendable, CaseIterable {
     case left, bottom, right   // deliberately no .top - the menu bar owns that edge
     public var isVertical: Bool { self != .bottom }
@@ -111,6 +126,7 @@ public enum PaletteColor: String, Codable, Sendable, CaseIterable {
 
 public enum PaperColor: String, Codable, Sendable, CaseIterable {
     case yellow, orange, pink, purple, blue, green, graphite
+    case white, black, translucent
 
     public var hex: String {
         switch self {
@@ -121,10 +137,22 @@ public enum PaperColor: String, Codable, Sendable, CaseIterable {
         case .blue: "#96C7F5"
         case .green: "#ADD985"
         case .graphite: "#CFCCC2"
+        case .white: "#F7F6F2"
+        case .black: "#1C1C1E"
+        // The shelf's own card shows through; see `isTranslucent`.
+        case .translucent: "#00000000"
         }
     }
 
-    public static let picker: [PaperColor] = [.yellow, .orange, .pink, .purple, .blue, .green]
+    /// No paper at all: the note is written on the widget card itself.
+    public var isTranslucent: Bool { self == .translucent }
+
+    /// Whether the note needs light ink. Everything else is a light swatch in
+    /// both appearances and keeps a fixed dark ink.
+    public var needsLightInk: Bool { self == .black || self == .translucent }
+
+    public static let picker: [PaperColor] = [.yellow, .orange, .pink, .purple, .blue, .green,
+                                              .white, .black, .translucent]
 }
 
 public enum MetricColor {
@@ -144,6 +172,9 @@ public enum WidgetKind: String, Codable, Sendable, CaseIterable {
     case hydration, calendar, reminders, notes, music, battery, system
     case network, aiUsage = "ai-usage", shortcut, airdrop, weather
     case stripe, paddle, stock, watchlist, shopify
+    // Appended, so no stored raw value moves; the library's order comes from
+    // the catalog, not from here.
+    case ask
 }
 
 /// What a widget opens when its card is clicked.
@@ -169,10 +200,12 @@ public enum WidgetCategory: String, Codable, Sendable, CaseIterable {
     case weather = "Weather"
     case business = "Business"
     case stocks = "Stocks"
+    case assistant = "Assistant"
 
     /// Library sidebar order.
     public static let ordered: [WidgetCategory] = [
-        .clocks, .reminders, .calendar, .notes, .media, .system, .weather, .business, .stocks,
+        .assistant, .clocks, .reminders, .calendar, .notes, .media, .system, .weather, .business,
+        .stocks,
     ]
 }
 
@@ -436,19 +469,14 @@ public struct DockProfile: Codable, Hashable, Identifiable, Sendable {
     public var items: [DockItem]
     /// Travels with a customDock profile; ignored for macOSDock profiles.
     public var scale: Double
-    /// Reserved, and read by nothing yet.
-    ///
-    /// Both are groundwork for switching profiles without the menu bar: a
-    /// global hotkey, and a Focus filter that changes the shelf when a Focus
-    /// turns on. They are carried through save, restore and duplicate so a
-    /// setup made today survives into the build that honours them, and
-    /// `duplicateProfile` deliberately drops the hotkey, since two profiles
-    /// must never claim one key combination.
-    ///
-    /// Kept rather than removed because the plan for them is written down and
-    /// the modelling is the cheap half. Anything else stored and unread has
-    /// been deleted rather than left to look like an oversight.
+    /// A global hot key that switches to this layout; see `ProfileHotkeys`.
+    /// `duplicateProfile` deliberately drops it, since two profiles must
+    /// never claim one key combination.
     public var shortcut: KeyCombo?
+    /// Reserved, and read by nothing yet: groundwork for a Focus filter that
+    /// changes the shelf when a Focus turns on. Carried through save, restore
+    /// and duplicate so a setup made today survives into the build that
+    /// honours it.
     public var focusFilterID: String?
 
     /// Decodes item by item, dropping any it cannot read.
@@ -773,6 +801,13 @@ public struct PersistedState: Codable, Sendable {
     /// Apple's Dock preferences from before the shelf borrowed its strip.
     /// Non-nil means they are currently changed and owe a restore.
     public var borrowedDockPrefs: DockPrefs?
+    /// The user asked for Apple's Dock to be hidden entirely.
+    public var hideAppleDock = false
+    /// What hiding it changed. Non-nil means the Dock is hidden now and owes a
+    /// restore, which quitting pays; `hideAppleDock` then puts it back on the
+    /// next launch. Two fields so that quitting Docket never leaves someone
+    /// without a Dock, and relaunching it keeps their choice.
+    public var hiddenDockPrefs: DockVisibility?
     /// Whether to look for new releases.
     ///
     /// Three states on purpose. Nil means the question has not been asked, and
@@ -803,6 +838,8 @@ public struct PersistedState: Codable, Sendable {
         timer = try c.decodeIfPresent(TimerState.self, forKey: .timer) ?? TimerState()
         originalMacOSDock = try c.decodeIfPresent([MacOSDockTile].self, forKey: .originalMacOSDock)
         borrowedDockPrefs = try c.decodeIfPresent(DockPrefs.self, forKey: .borrowedDockPrefs)
+        hideAppleDock = try c.decodeIfPresent(Bool.self, forKey: .hideAppleDock) ?? false
+        hiddenDockPrefs = try c.decodeIfPresent(DockVisibility.self, forKey: .hiddenDockPrefs)
         checkForUpdates = try c.decodeIfPresent(Bool.self, forKey: .checkForUpdates)
     }
 
@@ -815,6 +852,11 @@ public struct PersistedState: Codable, Sendable {
 
     public func profiles(of kind: ProfileKind) -> [DockProfile] {
         profiles.filter { $0.kind == kind }
+    }
+
+    /// Every layout that has a hot key, keyed by layout.
+    public var shortcuts: [UUID: KeyCombo] {
+        Dictionary(uniqueKeysWithValues: profiles.compactMap { p in p.shortcut.map { (p.id, $0) } })
     }
 
     public var activeCustomProfile: DockProfile? { profile(customDock.profileID) }

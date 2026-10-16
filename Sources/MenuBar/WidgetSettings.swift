@@ -10,9 +10,11 @@ import SwiftUI
 struct WidgetSettingsSections: View {
     @Binding var state: PersistedState
 
-    /// Which widget is being edited. `nil` means "whichever is first", which
-    /// is also where a selection goes when its widget leaves the shelf.
-    @State private var selection: UUID?
+    /// Which widget is being edited, shared so a shelf widget's "Widget
+    /// Settings…" can choose it. `nil` means "whichever is first", which is
+    /// also where a selection goes when its widget leaves the shelf.
+    @State private var shared = SettingsSelection.shared
+    private var selection: UUID? { shared.widget }
 
     var body: some View {
         if instances.isEmpty {
@@ -37,7 +39,7 @@ struct WidgetSettingsSections: View {
             Section("Widgets") {
                 Picker("Widget", selection: Binding(
                     get: { chosen?.instance.id },
-                    set: { selection = $0 })) {
+                    set: { shared.widget = $0 })) {
                     ForEach(configurable, id: \.instance.id) { pair in
                         Text(sectionTitle(for: pair)).tag(Optional(pair.instance.id))
                     }
@@ -45,6 +47,17 @@ struct WidgetSettingsSections: View {
             }
 
             if let pair = chosen {
+                // The widget itself, live, at the top: which one is being
+                // edited is then never a matter of reading a picker, and
+                // every change below shows on it as it is made.
+                Section {
+                    WidgetTile(instance: pair.instance,
+                               context: WidgetContext(position: .bottom, now: .now, isPreview: false))
+                        .allowsHitTesting(false)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+
                 // Numbered only when there is more than one of a kind. Two
                 // Sticky Notes produced two headings both called "Sticky
                 // Note", with nothing to say which note each one edited.
@@ -57,6 +70,13 @@ struct WidgetSettingsSections: View {
                     }
                 }
             }
+        }
+
+        // Its own section: Ask has no catalog options, only a key, and the
+        // key is a secret that belongs in the Keychain rather than in the
+        // widget's config with everything else.
+        if instances.contains(where: { $0.kind == .ask }) {
+            AskKeySection()
         }
     }
 
@@ -248,8 +268,9 @@ struct WidgetSettingsSections: View {
                                 .map { $0.trimmingCharacters(in: .whitespaces) }
                                 .filter { !$0.isEmpty }
                             // An empty field is a half-finished edit, not a
-                            // request for a widget with nothing in it.
-                            guard !list.isEmpty else { return }
+                            // request for a widget with nothing in it -
+                            // except for names, where none is the default.
+                            guard !list.isEmpty || key == "names" else { return }
                             write(instance) { $0.set(key, .list(list.map { .string($0) })) }
                         }),
                         prompt: Text(Self.prompt(key)))
@@ -295,6 +316,13 @@ struct WidgetSettingsSections: View {
         "text": "Note",
         "zone": "Time zone",
         "symbols": "Symbols",
+        "trackAmounts": "Log amounts",
+        "drinkSize": "Drink size",
+        "goal": "Daily goal",
+        "refresh": "Refresh every",
+        "hideWhenClosed": "Hide when the players are closed",
+        "names": "Custom names",
+        "reminders": "Notify when a drink is due",
     ]
 
     static func label(_ key: String) -> String {
@@ -312,22 +340,37 @@ struct WidgetSettingsSections: View {
     }
 
     static func prompt(_ key: String) -> String {
-        key == "city" ? "Current location" : ""
+        switch key {
+        case "city": "Current location"
+        case "names": "AAPL=Apple"
+        default: ""
+        }
     }
 
     static func range(_ key: String) -> ClosedRange<Double> {
         switch key {
         case "duration": 60...14_400
         case "skip": 5...60
+        case "drinkSize": 50...1_000
+        case "goal": 500...5_000
+        case "refresh": 1...60
         default: 0...1_000
         }
     }
 
     static func step(_ key: String) -> Double {
-        key == "duration" ? 300 : 5
+        switch key {
+        case "duration": 300
+        case "drinkSize": 50
+        case "goal": 250
+        case "refresh": 1
+        default: 5
+        }
     }
 
     static func format(_ key: String, _ value: Double) -> String {
+        if key == "drinkSize" || key == "goal" { return "\(Int(value)) mL" }
+        if key == "refresh" { return "\(Int(value)) min" }
         guard key == "duration" else { return "\(Int(value))s" }
         let minutes = Int(value) / 60
         return minutes >= 60 ? "\(minutes / 60)h \(minutes % 60)m" : "\(minutes)m"
@@ -378,5 +421,53 @@ struct WidgetSettingsSections: View {
     /// there is.
     static func isFreeformList(_ key: String) -> Bool {
         choices[key] == nil
+    }
+}
+
+/// The Anthropic API key Ask uses, kept in the Keychain.
+///
+/// Never shown back once saved: the field is for entering a key, and the
+/// status line says whether one is stored.
+private struct AskKeySection: View {
+    @State private var draft = ""
+    @State private var saved = AnthropicKey.read() != nil
+
+    var body: some View {
+        Section {
+            SecureField("Anthropic API key", text: $draft, prompt: Text("sk-ant-…"))
+                .onSubmit(save)
+            LabeledContent {
+                if saved {
+                    Button("Remove", role: .destructive) {
+                        AnthropicKey.remove()
+                        refresh()
+                    }
+                } else if !draft.isEmpty {
+                    Button("Save", action: save)
+                }
+            } label: {
+                Label(saved ? "Saved in Keychain" : "Not set",
+                      systemImage: saved ? "checkmark.seal.fill" : "key")
+                    .foregroundStyle(saved ? .primary : .secondary)
+            }
+        } header: {
+            Text("Ask")
+        } footer: {
+            Link("Get a key from the Anthropic Console",
+                 destination: URL(string: "https://console.anthropic.com/settings/keys")!)
+                .font(.caption)
+        }
+    }
+
+    private func save() {
+        guard !draft.isEmpty else { return }
+        AnthropicKey.save(draft)
+        draft = ""
+        refresh()
+    }
+
+    private func refresh() {
+        saved = AnthropicKey.read() != nil
+        AskService.shared.refreshKey()
     }
 }

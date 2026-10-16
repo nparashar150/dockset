@@ -67,6 +67,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
         if let error = app.lastError {
             let item = NSMenuItem(title: error, action: nil, keyEquivalent: "")
+            item.image = Self.symbol("exclamationmark.triangle")
             item.isEnabled = false
             menu.addItem(item)
             menu.addItem(.separator())
@@ -82,18 +83,17 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         // Only when there is one. An always-present "you are up to date" line
         // is a permanent reminder of something nobody needs reminding of.
         if let update = UpdateService.shared.available {
-            let entry = item("Update to \(update.version)…", #selector(openUpdate))
-            entry.image = NSImage(systemSymbolName: "arrow.down.circle.fill",
-                                  accessibilityDescription: nil)
+            let entry = item("Update to \(update.version)…", #selector(openUpdate),
+                             symbol: "arrow.down.circle")
             menu.addItem(entry)
             menu.addItem(.separator())
         }
         if hasShelf {
-            menu.addItem(item("Add Widget…", #selector(openLibrary)))
+            menu.addItem(item("Add Widget…", #selector(openLibrary), symbol: "plus.square"))
         }
-        menu.addItem(item("Settings…", #selector(openSettings), key: ","))
+        menu.addItem(item("Settings…", #selector(openSettings), key: ",", symbol: "gearshape"))
         menu.addItem(.separator())
-        menu.addItem(item("Quit Docket", #selector(quit), key: "q"))
+        menu.addItem(item("Quit Docket", #selector(quit), key: "q", symbol: "power"))
     }
 
     @objc private func openUpdate() { UpdateService.shared.openReleasePage() }
@@ -106,23 +106,26 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let active = profiles.first { $0.id == activeID }?.name
 
         let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        parent.image = Self.symbol(kind == .customDock ? "rectangle.bottomthird.inset.filled" : "dock.rectangle")
         let submenu = NSMenu()
         for profile in profiles {
             let entry = NSMenuItem(title: profile.name, action: #selector(selectProfile(_:)), keyEquivalent: "")
             entry.target = self
             entry.representedObject = profile.id
             entry.state = profile.id == activeID ? .on : .off
+            entry.image = Self.symbol("square.stack")
             submenu.addItem(entry)
         }
         if !profiles.isEmpty { submenu.addItem(.separator()) }
         if kind == .macOSDock {
-            submenu.addItem(item("Save Current Dock", #selector(captureDock)))
+            submenu.addItem(item("Save Current Dock", #selector(captureDock), symbol: "square.and.arrow.down"))
             if app.state.originalMacOSDock != nil {
-                submenu.addItem(item("Restore Original Dock", #selector(restoreDock)))
+                submenu.addItem(item("Restore Original Dock", #selector(restoreDock),
+                                     symbol: "arrow.uturn.backward"))
             }
             submenu.addItem(.separator())
         }
-        submenu.addItem(item("Edit Layouts…", #selector(openLayouts)))
+        submenu.addItem(item("Edit Layouts…", #selector(openLayouts), symbol: "slider.horizontal.3"))
         parent.submenu = submenu
 
         // The layout in use, greyed at the trailing edge the way a menu shows
@@ -137,17 +140,33 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         return parent
     }
 
-    private func item(_ title: String, _ action: Selector, key: String = "") -> NSMenuItem {
+    /// Every item carries a symbol. Only Update had one, so the menu read as
+    /// a list with one decorated line rather than a set of the same thing.
+    private func item(_ title: String, _ action: Selector, key: String = "",
+                      symbol: String) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
         item.target = self
+        item.image = Self.symbol(symbol)
         return item
+    }
+
+    private static func symbol(_ name: String) -> NSImage? {
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: nil)
+        image?.isTemplate = true
+        return image
     }
 
     // MARK: Actions
 
     @objc private func selectProfile(_ sender: NSMenuItem) {
-        guard let id = sender.representedObject as? UUID,
-              let profile = app.state.profile(id) else { return }
+        guard let id = sender.representedObject as? UUID else { return }
+        switchTo(id)
+    }
+
+    /// Everything choosing a layout from this menu does, for the layout hot
+    /// keys to do the same.
+    func switchTo(_ id: UUID) {
+        guard let profile = app.state.profile(id) else { return }
         app.select(profile)
         refreshButton()
         onShelfSettingsChanged?()

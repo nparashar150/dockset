@@ -1,5 +1,9 @@
 import AppKit
+import OSLog
 import SwiftUI
+
+/// `log stream --level debug --predicate 'subsystem == "com.namanparashar.plinth"'`
+let panelLog = Logger(subsystem: "com.namanparashar.plinth", category: "panel")
 
 /// A widget's detail panel: what opens when its tile is clicked.
 ///
@@ -36,7 +40,7 @@ final class WidgetDetailWindow {
     /// What the open panel was shown with, so a config change underneath it
     /// can be redrawn without reopening it.
     private var shown: (context: WidgetContext, edge: DockPosition,
-                        arrowOffset: CGFloat)?
+                        arrowOffset: CGFloat, maxBodyHeight: CGFloat?)?
 
     private init() {}
 
@@ -44,6 +48,10 @@ final class WidgetDetailWindow {
 
     func toggle(_ instance: WidgetInstance, context: WidgetContext,
                 anchor: CGPoint, edge: DockPosition, host: CGRect) {
+        panelLog.debug("""
+            toggle \(instance.kind.rawValue, privacy: .public) open=\(self.openWidgetID == instance.id) \
+            anchor=\(anchor.debugDescription, privacy: .public) host=\(host.debugDescription, privacy: .public)
+            """)
         if openWidgetID == instance.id { return close() }
         show(instance, context: context, anchor: anchor, edge: edge, host: host)
     }
@@ -62,9 +70,11 @@ final class WidgetDetailWindow {
     /// until reopened.
     func refresh(_ instance: WidgetInstance) {
         guard openWidgetID == instance.id, let shown else { return }
+        placedFor?.instance = instance
         hosting?.rootView = WidgetDetailChrome(
             instance: instance, context: shown.context, edge: shown.edge,
-            session: session, arrowOffset: shown.arrowOffset)
+            session: session, arrowOffset: shown.arrowOffset,
+            maxBodyHeight: shown.maxBodyHeight)
     }
 
     /// Closes on the next click outside the panel and its own tile.
@@ -102,6 +112,7 @@ final class WidgetDetailWindow {
 
     func close() {
         guard openWidgetID != nil else { return }
+        panelLog.debug("close")
         openWidgetID = nil
         shown = nil
         stopWatching()
@@ -121,25 +132,63 @@ final class WidgetDetailWindow {
 
     private func show(_ instance: WidgetInstance, context: WidgetContext,
                       anchor: CGPoint, edge: DockPosition, host: CGRect) {
-        let panel = existingOrNew()
         session = UUID()
-        shown = (context, edge, 0)
         self.host = host
+        guard place(instance, context: context, anchor: anchor, edge: edge) else { return }
+        // A panel carrying a text field or a slider needs the keyboard, and a
+        // borderless window is refused key status without the override.
+        panel?.makeKey()
+        watchForDismissal()
+    }
+
+    /// Re-measures and re-places the open panel after its content changed
+    /// size - a scan's results arriving, say. The panel is otherwise sized
+    /// once as it opens, and anything added later would be clipped.
+    func relayout() {
+        guard isOpen, let placedFor else { return }
+        place(placedFor.instance, context: placedFor.context,
+              anchor: placedFor.anchor, edge: placedFor.edge)
+    }
+
+    /// What the open panel was placed for, so `relayout` can do it again.
+    private var placedFor: (instance: WidgetInstance, context: WidgetContext,
+                            anchor: CGPoint, edge: DockPosition)?
+
+    /// Measures, caps, positions and shows. False when there was nothing to
+    /// show.
+    @discardableResult
+    private func place(_ instance: WidgetInstance, context: WidgetContext,
+                       anchor: CGPoint, edge: DockPosition) -> Bool {
+        let panel = existingOrNew()
+        shown = (context, edge, 0, nil)
         hosting?.rootView = WidgetDetailChrome(
             instance: instance, context: context, edge: edge, session: session)
-
-        let size = hosting?.fittingSize ?? .zero
-        // Claimed only once there is something to show. Setting it above the
-        // guard meant a bail here left the widget marked open with no window,
-        // and `toggle` would then answer every later click by closing a panel
-        // that was never up.
-        guard size.width > 1, size.height > 1 else { return }
-        openWidgetID = instance.id
 
         // Almost touching the tile: the panel's own padding already includes
         // the tail's depth, so this is the gap between the tail's tip and the
         // tile, not between the tile and the body.
         let gap: CGFloat = 2
+        var size = hosting?.fittingSize ?? .zero
+        // Taller than the room beside the shelf, the body scrolls rather than
+        // running off the screen. Measured first and only then capped, so a
+        // panel that fits never carries a scroll view it does not need.
+        let room = verticalRoom(anchor: anchor, edge: edge, gap: gap)
+        var maxBodyHeight: CGFloat?
+        if size.height > room {
+            maxBodyHeight = room - PanelShape.arrowDepth
+            hosting?.rootView = WidgetDetailChrome(
+                instance: instance, context: context, edge: edge, session: session,
+                maxBodyHeight: maxBodyHeight)
+            size = hosting?.fittingSize ?? size
+        }
+        // Claimed only once there is something to show. Setting it above the
+        // guard meant a bail here left the widget marked open with no window,
+        // and `toggle` would then answer every later click by closing a panel
+        // that was never up.
+        guard size.width > 1, size.height > 1 else { return false }
+        openWidgetID = instance.id
+        placedFor = (instance, context, anchor, edge)
+
         let origin: CGPoint = switch edge {
         case .bottom: CGPoint(x: anchor.x - size.width / 2, y: anchor.y + gap)
         case .left: CGPoint(x: anchor.x + gap, y: anchor.y - size.height / 2)
@@ -158,18 +207,34 @@ final class WidgetDetailWindow {
         // the sign flips on a side shelf.
         case .left, .right: (placed.y + size.height / 2) - anchor.y
         }
-        shown = (context, edge, offset)
+        shown = (context, edge, offset, maxBodyHeight)
         hosting?.rootView = WidgetDetailChrome(
             instance: instance, context: context, edge: edge, session: session,
-            arrowOffset: offset)
+            arrowOffset: offset, maxBodyHeight: maxBodyHeight)
 
-        panel.setFrame(CGRect(origin: placed, size: size), display: false)
+        panel.setFrame(CGRect(origin: placed, size: size), display: true)
         panel.alphaValue = 1
         panel.orderFrontRegardless()
-        // A panel carrying a text field or a slider needs the keyboard, and a
-        // borderless window is refused key status without the override.
-        panel.makeKey()
-        watchForDismissal()
+        panelLog.debug("""
+            placed \(instance.kind.rawValue, privacy: .public) frame=\(panel.frame.debugDescription, privacy: .public) \
+            visible=\(panel.isVisible) activeSpace=\(panel.isOnActiveSpace) \
+            screen=\(panel.screen?.localizedName ?? "none", privacy: .public)
+            """)
+        return true
+    }
+
+    /// How tall the panel may be: above the tile for a bottom shelf, the
+    /// screen's height for a side one. Same 8pt margins as `clamped`.
+    private func verticalRoom(anchor: CGPoint, edge: DockPosition, gap: CGFloat) -> CGFloat {
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(anchor) })
+                ?? NSScreen.main else { return .greatestFiniteMagnitude }
+        let visible = screen.visibleFrame
+        let room = switch edge {
+        case .bottom: visible.maxY - 8 - (anchor.y + gap)
+        case .left, .right: visible.height - 16
+        }
+        // Never so small the scroll view has nothing to show.
+        return max(room, 160)
     }
 
     private func clamped(_ origin: CGPoint, size: NSSize) -> CGPoint {
@@ -231,13 +296,15 @@ struct WidgetDetailChrome: View {
     /// until the panel is clamped against the end of the screen, after which
     /// the tail has to reach back toward the tile.
     var arrowOffset: CGFloat = 0
+    /// Set only when the body is taller than the screen has room for; the
+    /// body then scrolls inside this height.
+    var maxBodyHeight: CGFloat?
 
     @Environment(\.colorScheme) private var scheme
     @State private var appeared = false
 
     var body: some View {
-        WidgetDetailBody(instance: instance, context: context)
-            .padding(16)
+        scrolling(WidgetDetailBody(instance: instance, context: context).padding(16))
             // Room for the tail on whichever side the shelf is.
             .padding(tailSide, PanelShape.arrowDepth)
             .frame(width: WidgetDetail.width(instance.kind), alignment: .leading)
@@ -253,6 +320,16 @@ struct WidgetDetailChrome: View {
                 appeared = false
                 Task { @MainActor in enter() }
             }
+    }
+
+    @ViewBuilder
+    private func scrolling(_ content: some View) -> some View {
+        if let maxBodyHeight {
+            ScrollView(.vertical) { content }
+                .frame(height: maxBodyHeight)
+        } else {
+            content
+        }
     }
 
     /// Which side the tail sits on, which is the side facing the shelf.
@@ -362,25 +439,13 @@ enum WidgetDetail {
         }
     }
 
-    static func width(_ kind: WidgetKind) -> CGFloat {
-        switch kind {
-        case .stripe, .paddle, .shopify: 340
-        case .calendar, .reminders: 320
-        // Set by the twelve-column strip of the next hours there.
-        case .world: 320
-        // A big time, a date and two rows: 300 left a gutter wide enough to
-        // read as padding.
-        case .clock: 280
-        case .battery: 330
-        case .notes: 300
-        case .system, .network: 340
-        // Wide enough for the whole hourly series as a strip; the tile fits
-        // five of those hours and the service publishes twelve.
-        case .weather: 340
-        case .music: 330
-        default: 300
-        }
-    }
+    /// One width for every panel.
+    ///
+    /// It was set per kind, from 280 to 360, each fitted to its own content,
+    /// so opening one widget after another made the panel jump in size as
+    /// well as in place. One width, with the card's one height, makes them
+    /// read as one thing showing different readings.
+    static func width(_ kind: WidgetKind) -> CGFloat { 340 }
 }
 
 /// The panel's outline: a rounded rectangle with a tail pointing at the tile

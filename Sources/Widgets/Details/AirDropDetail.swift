@@ -42,12 +42,12 @@ struct AirDropDetail: View {
             VStack(alignment: .leading, spacing: 14) {
                 state
                 HStack(spacing: 8) {
-                    button("Open AirDrop", fill: .white.opacity(0.24), label: .white, action: openWindow)
-                    button("Settings", fill: .white.opacity(0.14), label: .white, action: openSettings)
+                    button("Open AirDrop", fill: Color.panelInk.opacity(0.24), label: Color.panelInk, action: openWindow)
+                    button("Settings", fill: Color.panelInk.opacity(0.14), label: Color.panelInk, action: openSettings)
                 }
                 Text("Nearby devices are listed only in Finder's AirDrop window, and the mode is changed in Control Centre or Settings.")
                     .font(WidgetStyle.caption(10))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(Color.panelInk.opacity(0.6))
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -68,7 +68,7 @@ struct AirDropDetail: View {
         ZStack {
             ForEach(1...4, id: \.self) { ring in
                 Circle()
-                    .strokeBorder(.white.opacity(mode == .off || mode == nil ? 0.04 : 0.16 / Double(ring)),
+                    .strokeBorder(Color.panelInk.opacity(mode == .off || mode == nil ? 0.04 : 0.16 / Double(ring)),
                                   lineWidth: 1.5)
                     .frame(width: CGFloat(ring) * 70, height: CGFloat(ring) * 70)
             }
@@ -81,14 +81,14 @@ struct AirDropDetail: View {
     private var state: some View {
         HStack(spacing: 10) {
             Circle()
-                .fill(.white.opacity(0.16))
+                .fill(Color.panelInk.opacity(0.16))
                 .frame(width: 46, height: 46)
                 .overlay {
                     // The tile's stand-in glyph, so the panel and the card it
                     // opened from are recognisably the same widget.
                     Image(systemName: "dot.radiowaves.up.forward")
                         .font(.system(size: 21, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color.panelInk)
                 }
             VStack(alignment: .leading, spacing: 2) {
                 Text(mode?.title ?? "Setting unavailable")
@@ -96,7 +96,7 @@ struct AirDropDetail: View {
                     .foregroundStyle(WidgetStyle.primary)
                 Text(mode?.detail ?? "macOS is not reporting a discoverability mode.")
                     .font(WidgetStyle.caption(12))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(Color.panelInk.opacity(0.75))
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)

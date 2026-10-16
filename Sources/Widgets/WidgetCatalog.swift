@@ -31,6 +31,11 @@ public enum WidgetCatalog {
     private static func c(_ pairs: [String: WidgetConfig.Value]) -> WidgetConfig { WidgetConfig(pairs) }
 
     public static let entries: [Entry] = [
+        // No config: the API key lives in the Keychain, never in the state
+        // file, and there is nothing else to choose.
+        Entry(kind: .ask, name: "Ask", category: .assistant, defaults: c([:]),
+              variants: [], supportsCompact: false, selfContained: true),
+
         Entry(kind: .clock, name: "Clock", category: .clocks, defaults: c([:]),
               variants: [], supportsCompact: true, selfContained: true),
 
@@ -60,7 +65,9 @@ public enum WidgetCatalog {
               variants: [], supportsCompact: false, selfContained: true),
 
         Entry(kind: .hydration, name: "Hydration", category: .reminders,
-              defaults: c(["duration": .number(2700)]),
+              defaults: c(["duration": .number(2700), "trackAmounts": .bool(true),
+                           "drinkSize": .number(250), "goal": .number(2000),
+                           "reminders": .bool(false)]),
               variants: [], supportsCompact: false, selfContained: true),
 
         // No `showCallButton`: read by nothing. A join-call affordance needs
@@ -92,7 +99,7 @@ public enum WidgetCatalog {
                            "spotify": .bool(true), "apple": .bool(true),
                            // Falls back to video playing in a scriptable
                            // browser tab when no native player has anything.
-                           "browsers": .bool(true)]),
+                           "browsers": .bool(true), "hideWhenClosed": .bool(false)]),
               variants: [("Full", ["mini": .bool(false)]), ("Mini", ["mini": .bool(true)])],
               supportsCompact: false, selfContained: true),
 
@@ -139,13 +146,15 @@ public enum WidgetCatalog {
         Entry(kind: .stock, name: "Stock", category: .stocks,
               defaults: c(["symbol": .string("AAPL"),
                            "symbols": .list([.string("AAPL")]),
-                           "chart": .bool(true)]),
+                           "chart": .bool(true), "refresh": .number(5),
+                           "names": .list([])]),
               variants: [], supportsCompact: true, selfContained: true),
 
         // No `chart` here, unlike Stock: this tile is a list of rows and has
         // never drawn one, so the switch had nothing to switch.
         Entry(kind: .watchlist, name: "Watchlist", category: .stocks,
-              defaults: c(["symbols": .list([.string("AAPL"), .string("MSFT"), .string("NVDA")])]),
+              defaults: c(["symbols": .list([.string("AAPL"), .string("MSFT"), .string("NVDA")]),
+                           "refresh": .number(5), "names": .list([])]),
               variants: [], supportsCompact: false, selfContained: true),
 
         Entry(kind: .weather, name: "Weather", category: .weather,
@@ -181,7 +190,7 @@ public enum WidgetCatalog {
         case .system: MetricColor.cpu
         case .network: MetricColor.netUpload
         case .stock, .watchlist: PaletteColor.green.hex
-        case .aiUsage: PaletteColor.indigo.hex
+        case .aiUsage, .ask: PaletteColor.indigo.hex
         case .hydration: PaletteColor.blue.hex
         // Neutral: a clock, a battery or a player is not "about" a colour.
         case .clock, .world, .stopwatch, .timer, .progress, .countdown,
@@ -222,6 +231,8 @@ public enum WidgetCatalog {
         // wide layout only, so in mini these were five controls that
         // accepted a change and produced none. Offering an option that does
         // nothing is the same defect as offering one nothing reads.
+        case (.hydration, "drinkSize"), (.hydration, "goal"):
+            config.bool("trackAmounts", default: true)
         case (.music, "previous"), (.music, "next"), (.music, "backward"),
              (.music, "forward"), (.music, "skip"):
             !config.bool("mini")
@@ -289,7 +300,8 @@ public enum WidgetCatalog {
         // Spotify while its own transport already owns the card, `progress`
         // and `hydration` are self-contained, and the business tiles are for
         // dashboards we cannot address.
-        case .music, .progress, .hydration, .aiUsage, .stripe, .paddle, .shopify:
+        // Ask opens its own panel, which is where the question is typed.
+        case .music, .progress, .hydration, .aiUsage, .stripe, .paddle, .shopify, .ask:
             nil
         }
     }
@@ -376,6 +388,7 @@ public enum WidgetCatalog {
         case .aiUsage: return CGSize(width: 192, height: 132)
         case .shortcut: return CGSize(width: 140, height: 76)
         case .airdrop: return CGSize(width: 100, height: 76)
+        case .ask: return CGSize(width: 168, height: 76)
         case .weather:
             return cfg.string("layout", default: "current") == "hourly"
                 ? CGSize(width: 216, height: 132) : CGSize(width: 148, height: 132)
@@ -422,29 +435,28 @@ public enum WidgetCatalog {
     }
 
     /// Long-axis extent of a widget's stacked, column layout.
+    ///
+    /// One square for almost every kind. It was a height per kind, from 46 to
+    /// over a hundred, so a side shelf was a column of odd lengths with no
+    /// rhythm to it, which is most of why it looked bad. A square holds the
+    /// shared column - badge, value, caption - and the exceptions are the
+    /// two that are genuinely more than one reading: a note, which is paper,
+    /// and a system tile showing several metrics, one square each.
     public static func verticalHeight(_ instance: WidgetInstance) -> Double {
-        let cfg = instance.config
+        let square = columnWidth
         switch instance.kind {
-        case .clock, .world: return 76
-        case .stopwatch, .countdown: return 62
-        case .timer: return 92
-        case .alarm: return 76
-        case .hydration: return 88
-        case .notes: return 96
-        case .airdrop: return 76
-        case .progress:
-            return cfg.string("layout", default: "bars") == "percentage" ? 58 : 80
-        case .battery:
-            let devices = max(1, cfg.strings("devices", default: ["mac"]).count)
-            return Double(devices * 62)
+        case .notes: return square * 1.25
+        // Artwork, two lines of title and the transport.
+        case .music: return square * 1.25
+        // A figure and its name per metric, which is about two thirds of a
+        // square each; the chart under each one, when it is switched on,
+        // needs the rest, or the top figure is pushed out of the card.
         case .system:
-            let metrics = max(1, cfg.strings("metrics", default: ["cpu", "memory"]).count)
-            // Each metric gets a row: sparkline, value, label.
-            return Double(metrics * 54 + 8)
-        case .network:
-            return cfg.string("display", default: "both") == "both" ? 76 : 46
+            let metrics = max(1, instance.config.strings("metrics", default: ["cpu", "memory"]).count)
+            let chart = instance.config.bool("chart")
+            return square * Double(metrics) * (chart ? 0.82 : 0.62)
         default:
-            return 76
+            return square
         }
     }
 

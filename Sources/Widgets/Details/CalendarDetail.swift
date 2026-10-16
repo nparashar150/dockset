@@ -11,6 +11,9 @@ import SwiftUI
 /// says so in one line: a calendar showing a plausible day it made up is worse
 /// than a calendar showing nothing.
 struct CalendarDetail: View {
+    /// See the list below: what fits the card every panel shares.
+    private static let visibleRows = 3
+
     var instance: WidgetInstance
     var context: WidgetContext
 
@@ -79,7 +82,7 @@ struct CalendarDetail: View {
                 Text(day.formatted(.dateTime.weekday(.wide)).uppercased())
                     .font(.system(size: 11, weight: .semibold))
                     .tracking(0.8)
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(Color.panelInk.opacity(0.8))
                 Text(day.formatted(.dateTime.month(.wide).year()))
                     .font(WidgetStyle.label(14))
                     .foregroundStyle(WidgetStyle.primary)
@@ -108,10 +111,10 @@ struct CalendarDetail: View {
         } label: {
             Text("Calendars…")
                 .font(WidgetStyle.label(11))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.panelInk)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(.white.opacity(0.14), in: .capsule)
+                .background(Color.panelInk.opacity(0.14), in: .capsule)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -126,32 +129,40 @@ struct CalendarDetail: View {
 
         if timed.isEmpty, allDay.isEmpty {
             Text("Nothing scheduled today.")
-                .font(WidgetStyle.label(13))
-                .foregroundStyle(.white.opacity(0.8))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .glassPane()
+                .font(WidgetStyle.caption(12))
+                .foregroundStyle(Color.panelInk.opacity(0.6))
+            MonthGrid(day: day, accent: Self.accent)
         } else {
+            // Three rows at most, so a busy day fits the card every panel
+            // shares; the rest are counted under them, and Calendar has them.
+            let shownTimed = Array(timed.prefix(Self.visibleRows))
+            let shownAllDay = Array(allDay.prefix(max(0, Self.visibleRows - shownTimed.count)))
+            let hidden = timed.count + allDay.count - shownTimed.count - shownAllDay.count
             VStack(alignment: .leading, spacing: 6) {
                 // Time first, calendar second: two events at 10:30 are told
                 // apart by the calendar, never the other way round.
-                ForEach(timed) { event in
-                    row(event, detail: "\(clock(event.start)) · \(event.calendar)")
+                ForEach(shownTimed) { event in
+                    row(event, detail: "\(when(event)) · \(event.calendar)")
                 }
             }
-            if !allDay.isEmpty {
+            if !shownAllDay.isEmpty {
                 // Below the timed events, not mixed into them: an all-day
                 // entry has no place in a list ordered by time.
                 VStack(alignment: .leading, spacing: 6) {
                     Text("ALL DAY")
                         .font(.system(size: 9, weight: .semibold))
                         .tracking(0.6)
-                        .foregroundStyle(.white.opacity(0.6))
-                    ForEach(allDay) { event in
+                        .foregroundStyle(Color.panelInk.opacity(0.6))
+                    ForEach(shownAllDay) { event in
                         row(event, detail: event.calendar)
                     }
                 }
                 .padding(.top, 2)
+            }
+            if hidden > 0 {
+                Text("\(hidden) more today")
+                    .font(WidgetStyle.caption(11))
+                    .foregroundStyle(Color.panelInk.opacity(0.6))
             }
         }
     }
@@ -169,9 +180,14 @@ struct CalendarDetail: View {
                     .foregroundStyle(WidgetStyle.primary)
                 Text(detail)
                     .font(WidgetStyle.caption(11))
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(Color.panelInk.opacity(0.7))
             }
             Spacer(minLength: 0)
+            // Any call still to come, not only the imminent one the tile
+            // offers: the panel is where you go to look ahead.
+            if let link = event.meeting, !event.isPast(context.now) {
+                JoinButton(url: link, enabled: !context.isPreview)
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
@@ -187,25 +203,34 @@ struct CalendarDetail: View {
 
     // MARK: No access
 
+    /// The month, which needs no permission, with one line under it asking
+    /// for what does. The panel was a sentence and a button on an empty
+    /// card, which read as broken rather than as waiting to be let in.
     private var permission: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(access == .notDetermined
-                 ? "Docket has not been given access to your calendar."
-                 : "Calendar access is off for Docket.")
-                .font(WidgetStyle.caption(12))
-                .foregroundStyle(.white.opacity(0.8))
-                .fixedSize(horizontal: false, vertical: true)
-            // Once the answer is no, asking again returns it unchanged with no
-            // prompt on screen, so the only button worth drawing is the one
-            // that goes where the answer can be changed.
-            if access == .notDetermined {
-                action("Allow Access") { request() }
-            } else {
-                action("Open Settings") { openPrivacySettings() }
+        VStack(alignment: .leading, spacing: 12) {
+            MonthGrid(day: day, accent: Self.accent)
+            HStack(spacing: 10) {
+                Text(access == .notDetermined
+                     ? "Allow access to see today's events."
+                     : "Calendar access is off.")
+                    .font(WidgetStyle.caption(12))
+                    .foregroundStyle(Color.panelInk.opacity(0.7))
+                Spacer(minLength: 8)
+                // Once the answer is no, asking again returns it unchanged
+                // with no prompt on screen, so the only button worth drawing
+                // is the one that goes where the answer can be changed.
+                if access == .notDetermined {
+                    action("Allow") { request() }
+                } else {
+                    action("Open Settings") { openPrivacySettings() }
+                }
             }
+            .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    private static let accent = Color(red: 0.86, green: 0.22, blue: 0.24)
 
     private func action(_ title: String, run: @escaping () -> Void) -> some View {
         Button {
@@ -214,10 +239,10 @@ struct CalendarDetail: View {
         } label: {
             Text(title)
                 .font(WidgetStyle.label(13))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(Capsule().fill(.white.opacity(0.14)))
+                .foregroundStyle(Color.panelInk)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(Color.panelInk.opacity(0.14)))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -265,6 +290,9 @@ struct CalendarDetail: View {
     /// The consent prompt, and the only thing that raises it, running solely
     /// because the user clicked for it.
     private func request() {
+        // An accessory app that is not frontmost can have the consent prompt
+        // come up behind everything, or not at all. Brought forward for it.
+        NSApp.activate(ignoringOtherApps: true)
         Task { @MainActor in
             // A store made here rather than the shared one: the request is an
             // async call out of the main actor, and the shared store is
@@ -308,8 +336,8 @@ struct CalendarDetail: View {
         load()
     }
 
-    private func clock(_ date: Date) -> String {
-        date.formatted(date: .omitted, time: .shortened)
+    private func when(_ event: DayEvent) -> String {
+        EventTime.label(start: event.start, end: event.end, now: context.now)
     }
 }
 
@@ -336,6 +364,7 @@ private struct DayEvent: Identifiable, Hashable {
     var isAllDay: Bool
     var calendar: String
     var color: Color
+    var meeting: URL?
 
     init?(_ event: EKEvent) {
         guard let start = event.startDate else { return nil }
@@ -350,6 +379,7 @@ private struct DayEvent: Identifiable, Hashable {
         self.isAllDay = event.isAllDay
         self.calendar = event.calendar?.title ?? ""
         self.color = CalendarSource.tint(event.calendar)
+        self.meeting = MeetingLink.find(in: [event.url?.absoluteString, event.location, event.notes])
     }
 
     /// All-day entries never go grey: they are true for the whole day.
@@ -376,5 +406,74 @@ private struct CalendarSource: Identifiable, Hashable {
             return Color(hex: WidgetCatalog.accentHex(.calendar) ?? PaletteColor.orange.hex)
         }
         return Color(nsColor: color)
+    }
+}
+
+/// This month as a grid of days, today ringed in the calendar's red.
+///
+/// Needs nothing from EventKit, which is why it is what the panel shows while
+/// it has no access, and on a day with nothing in it.
+private struct MonthGrid: View {
+    var day: Date
+    var accent: Color
+
+    private let calendar = Calendar.current
+
+    var body: some View {
+        let weeks = self.weeks
+        Grid(horizontalSpacing: 0, verticalSpacing: 2) {
+            GridRow {
+                ForEach(symbols, id: \.self) { symbol in
+                    Text(symbol)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.panelInk.opacity(0.4))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            ForEach(weeks.indices, id: \.self) { week in
+                GridRow {
+                    ForEach(0 ..< 7, id: \.self) { column in
+                        cell(weeks[week][column])
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(day.formatted(.dateTime.month(.wide).year()))
+    }
+
+    @ViewBuilder
+    private func cell(_ date: Date?) -> some View {
+        if let date {
+            let today = calendar.isDate(date, inSameDayAs: day)
+            Text(date.formatted(.dateTime.day()))
+                .font(.system(size: 11, weight: today ? .bold : .regular))
+                .monospacedDigit()
+                .foregroundStyle(today ? .white : Color.panelInk.opacity(0.8))
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(today ? accent : .clear))
+                .frame(maxWidth: .infinity)
+        } else {
+            Color.clear.frame(height: 20)
+        }
+    }
+
+    /// Weekday initials starting on the user's first weekday.
+    private var symbols: [String] {
+        let all = calendar.veryShortStandaloneWeekdaySymbols
+        let first = calendar.firstWeekday - 1
+        return Array(all[first...] + all[..<first])
+    }
+
+    /// The month in rows of seven, with blanks before the first and after the
+    /// last day.
+    private var weeks: [[Date?]] {
+        guard let interval = calendar.dateInterval(of: .month, for: day),
+              let days = calendar.range(of: .day, in: .month, for: day) else { return [] }
+        let lead = (calendar.component(.weekday, from: interval.start) - calendar.firstWeekday + 7) % 7
+        var cells: [Date?] = Array(repeating: nil, count: lead)
+        cells += days.compactMap { calendar.date(byAdding: .day, value: $0 - 1, to: interval.start) }
+        cells += Array(repeating: nil, count: (7 - cells.count % 7) % 7)
+        return stride(from: 0, to: cells.count, by: 7).map { Array(cells[$0 ..< $0 + 7]) }
     }
 }

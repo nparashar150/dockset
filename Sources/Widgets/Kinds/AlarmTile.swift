@@ -25,17 +25,19 @@ struct AlarmTile: View {
                     // 14pt rather than 18 so its disc lands on the 28pt the
                     // bare symbol already reserved and the column keeps its
                     // two lines.
-                    VStack(spacing: 2) {
-                        toggleGlyph(enabled: enabled, size: 14)
-                        VStack(spacing: 2) {
+                    // The same switch badge as the wide card, smaller, in
+                    // place of the orange disc this column used to carry.
+                    VStack(spacing: 3) {
+                        switchBadge(enabled: enabled, size: 30)
+                        VStack(spacing: 1) {
                             Text(next.formatted(.dateTime.hour().minute()))
-                                .font(WidgetStyle.value(18))
+                                .font(.system(size: 16, weight: .semibold))
                                 .monospacedDigit()
                                 .foregroundStyle(WidgetStyle.primary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.75)
                             Text(name.isEmpty ? "Alarm" : name)
-                                .font(WidgetStyle.caption(9))
+                                .font(.system(size: 11))
                                 .foregroundStyle(WidgetStyle.secondary)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.7)
@@ -65,38 +67,15 @@ struct AlarmTile: View {
         }
     }
 
-    /// Only ever as big as itself: the card's own click has to reach the shelf,
-    /// which is what opens Clock.app, so nothing here may spread to fill it.
-    /// `TileGlyph` is the shelf-wide treatment for exactly that - see
-    /// StopwatchTile - and it is what turns this from an orange badge in the
-    /// corner into a switch.
-    ///
-    /// The disc carries the alarm's own colour, so an armed alarm sits on
-    /// orange and a silenced one on grey: the state is legible before the
-    /// glyph itself is read. It stays at full strength while the rest of the
-    /// card fades, because the faded thing is what you are being asked to
-    /// press to bring back.
-    private func toggleGlyph(enabled: Bool, size: CGFloat) -> some View {
-        TileGlyph(
-            symbol: enabled ? "alarm.fill" : "alarm.slash.fill",
-            size: size,
-            tint: enabled ? Color(hex: PaletteColor.orange.hex) : WidgetStyle.secondary,
-            action: context.isPreview ? nil : (toggle as () -> Void)
-        )
-        .accessibilityLabel(
-            "\(enabled ? "Turn off" : "Turn on") alarm at \(nextOccurrence.formatted(.dateTime.hour().minute()))"
-        )
-    }
-
     /// The bell in the tile's badge, pressable where the shelf is live.
     ///
     /// Neutral when silenced and a muted orange when armed: the state reads
     /// before the glyph does, without an orange disc shouting from the card.
     @ViewBuilder
-    private func switchBadge(enabled: Bool) -> some View {
-        let badge = TileBadge {
+    private func switchBadge(enabled: Bool, size: CGFloat = 40) -> some View {
+        let badge = TileBadge(size: size) {
             Image(systemName: enabled ? "alarm.fill" : "alarm.slash.fill")
-                .font(.system(size: 16, weight: .regular))
+                .font(.system(size: size * 0.4, weight: .regular))
                 .foregroundStyle(enabled
                                  ? Color(hex: PaletteColor.orange.hex).mix(with: WidgetStyle.primary, by: 0.55)
                                  : WidgetStyle.secondary)

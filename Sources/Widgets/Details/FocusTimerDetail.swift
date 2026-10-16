@@ -43,7 +43,7 @@ struct FocusTimerDetail: View {
                     Text(sessionLine(state).uppercased())
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.8)
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(Color.panelInk.opacity(0.7))
                         .lineLimit(1)
                     Text(docketClockString(left))
                         .font(.system(size: 64, weight: .semibold, design: .rounded))
@@ -57,9 +57,9 @@ struct FocusTimerDetail: View {
                 HStack(spacing: 10) {
                     // White on the timer's colour, lettered in it: the one
                     // solid shape on the card is the one to press.
-                    button(primaryTitle(state, left: left), fill: .white.opacity(0.24), label: .white,
+                    button(primaryTitle(state, left: left), fill: Color.panelInk.opacity(0.24), label: Color.panelInk,
                            action: { togglePrimary() })
-                    button("Reset", fill: nil, label: .white,
+                    button("Reset", fill: nil, label: Color.panelInk,
                            action: { reset() })
                         .disabled(untouched)
                         .opacity(untouched ? 0.4 : 1)
@@ -80,9 +80,9 @@ struct FocusTimerDetail: View {
     private func drain(_ fraction: Double) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Rectangle().fill(.white.opacity(0.14))
+                Rectangle().fill(Color.panelInk.opacity(0.14))
                 Rectangle()
-                    .fill(.white.opacity(0.9))
+                    .fill(Color.panelInk.opacity(0.9))
                     .frame(width: geo.size.width * min(1, max(0, fraction)))
             }
         }
@@ -105,10 +105,10 @@ struct FocusTimerDetail: View {
         Button { pick(minutes) } label: {
             Text("\(minutes) min")
                 .font(WidgetStyle.label(11))
-                .foregroundStyle(.white.opacity(active ? 1 : 0.75))
+                .foregroundStyle(Color.panelInk.opacity(active ? 1 : 0.75))
                 .frame(maxWidth: .infinity)
                 .frame(height: 26)
-                .background(Capsule().fill(Color.white.opacity(active ? 0.28 : 0.1)))
+                .background(Capsule().fill(Color.panelInk.opacity(active ? 0.28 : 0.1)))
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)

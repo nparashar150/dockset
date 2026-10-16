@@ -28,12 +28,17 @@ final class SystemMetrics {
     /// Most recent last; grows to `historyLength` then slides.
     private(set) var cpuHistory: [Double] = []
     private(set) var memoryHistory: [Double] = []
-    static let historyLength = 60
+    /// Slow movers, kept so the panel can draw every reading on one chart.
+    private(set) var diskHistory: [Double] = []
+    private(set) var batteryHistory: [Double] = []
+    nonisolated static let historyLength = 60
 
     func history(for metric: String) -> [Double] {
         switch metric {
         case "cpu": cpuHistory
         case "memory": memoryHistory
+        case "disk": diskHistory
+        case "battery": batteryHistory
         default: []
         }
     }
@@ -48,10 +53,19 @@ final class SystemMetrics {
     }
 
     private func record() {
-        cpuHistory.append(cpu)
-        memoryHistory.append(memory)
-        if cpuHistory.count > Self.historyLength { cpuHistory.removeFirst() }
-        if memoryHistory.count > Self.historyLength { memoryHistory.removeFirst() }
+        Self.append(cpu, to: &cpuHistory)
+        Self.append(memory, to: &memoryHistory)
+        Self.append(disk, to: &diskHistory)
+        // The Mac's own battery, off its sampler. A Mac with none keeps no
+        // history rather than a line along zero.
+        if let mac = BatteryMetrics.shared.device(.mac), mac.present {
+            Self.append(mac.level, to: &batteryHistory)
+        }
+    }
+
+    private static func append(_ value: Double, to history: inout [Double]) {
+        history.append(value)
+        if history.count > historyLength { history.removeFirst() }
     }
 
     @ObservationIgnored private var timer: Timer?

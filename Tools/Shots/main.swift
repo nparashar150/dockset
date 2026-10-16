@@ -99,6 +99,10 @@ private func shots(since started: Date) -> [Shot] {
         // Live: this machine's own clock, zone and date.
         Shot(name: "clock", instance: widget(.clock), isPreview: false, source: .live),
 
+        // Sample: the panel's own finished answer. A live one would need an
+        // API key, and would picture whatever was last asked.
+        Shot(name: "ask", instance: widget(.ask), isPreview: true, source: .sample),
+
         // Live: the zone's own rules do this arithmetic, so the strip is the
         // real overlap between here and Tokyo at the moment of capture.
         Shot(name: "world-clock",
@@ -555,6 +559,8 @@ private func run() async {
 
     // SHOTS_ONLY=clock,weather retakes just those, for iterating on a few
     // panels without sitting through every network wait. Unset, all of them.
+    // SHOTS_SCHEME=light draws the light card instead of the dark one.
+    let light = ProcessInfo.processInfo.environment["SHOTS_SCHEME"] == "light"
     let only = ProcessInfo.processInfo.environment["SHOTS_ONLY"]
         .map { Set($0.split(separator: ",").map(String.init)) }
 
@@ -618,6 +624,8 @@ app.setActivationPolicy(.accessory)
 private func render(to directory: String) async {
     try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
     SystemMetrics.shared.start()
+    // SHOTS_SCHEME=light draws the light card instead of the dark one.
+    let light = ProcessInfo.processInfo.environment["SHOTS_SCHEME"] == "light"
     let only = ProcessInfo.processInfo.environment["SHOTS_ONLY"]
         .map { Set($0.split(separator: ",").map(String.init)) }
     for shot in shots(since: Date()) where only?.contains(shot.name) ?? true {
@@ -633,8 +641,8 @@ private func render(to directory: String) async {
             .padding(16)
             .frame(width: WidgetDetail.width(shot.instance.kind), alignment: .leading)
             .fixedSize(horizontal: false, vertical: true)
-            .background(Color(white: 0.16))
-            .environment(\.colorScheme, .dark)
+            .background(light ? Color(white: 0.93) : Color(white: 0.16))
+            .environment(\.colorScheme, light ? .light : .dark)
         let renderer = ImageRenderer(content: view)
         renderer.scale = 2
         guard let image = renderer.cgImage,
@@ -653,9 +661,12 @@ private func render(to directory: String) async {
 @MainActor
 private func renderTiles(to directory: String) {
     try? FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
-    let context = WidgetContext(position: .bottom, now: .now, isPreview: true)
+    // SHOTS_EDGE=left draws the side shelf's column layouts instead.
+    let edge: DockPosition = ProcessInfo.processInfo.environment["SHOTS_EDGE"] == "left" ? .left : .bottom
+    let context = WidgetContext(position: edge, now: .now, isPreview: true)
     let kinds = WidgetKind.allCases.filter { WidgetCatalog.make($0) != nil }
-    let sheet = VStack(alignment: .leading, spacing: 14) {
+    let sheet = LazyVGrid(columns: Array(repeating: GridItem(.fixed(edge == .left ? 190 : 420), alignment: .leading),
+                                         count: edge == .left ? 4 : 1), alignment: .leading, spacing: 14) {
         ForEach(kinds, id: \.self) { kind in
             HStack(spacing: 12) {
                 Text(kind.rawValue)

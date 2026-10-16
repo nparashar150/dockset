@@ -15,16 +15,26 @@ struct StickyNoteDetail: View {
     /// So the sheet is drawn on top of it: every `PaperColor` is a light swatch
     /// in both appearances, which is what lets the ink stay a fixed dark
     /// instead of a semantic colour that would go white and vanish.
-    private static let ink = Color(hex: "#1C1C1E")
+    private static let darkInk = Color(hex: "#1C1C1E")
+
+    /// The card is always drawn dark, so anything that is not a light swatch
+    /// writes in white.
+    private var ink: Color { color.needsLightInk ? .white : Self.darkInk }
+
+    private var color: PaperColor {
+        PaperColor(rawValue: instance.config.string("color", default: "yellow")) ?? .yellow
+    }
 
     /// What is being typed, kept apart from the stored note so the profile is
     /// written once the sentence is finished rather than once per keystroke.
     @State private var draft = ""
     @FocusState private var writing: Bool
 
+    /// No paper still needs a ground under white ink: the panel's material
+    /// is light in the light appearance. Smoked glass keeps it translucent
+    /// and readable either way.
     private var paper: Color {
-        let stored = instance.config.string("color", default: "yellow")
-        return WidgetStyle.paper(PaperColor(rawValue: stored) ?? .yellow)
+        color.isTranslucent ? .black.opacity(0.55) : WidgetStyle.paper(color)
     }
 
     private var stored: String { instance.config.string("text") }
@@ -35,7 +45,7 @@ struct StickyNoteDetail: View {
         // padding, so it stood a good 10pt further in from the edge than any
         // other panel's card, and read as a sheet in a frame rather than as
         // the panel.
-        DetailCard {
+        DetailCard(dark: true) {
             paper
         } content: {
             // Return finishes the note and Shift-Return breaks the line, which
@@ -45,7 +55,7 @@ struct StickyNoteDetail: View {
                 .textFieldStyle(.plain)
                 .focused($writing)
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(Self.ink)
+                .foregroundStyle(ink)
                 .lineSpacing(4)
                 .onSubmit {
                     commit()
@@ -67,7 +77,7 @@ struct StickyNoteDetail: View {
                 .accessibilityLabel("Note")
                 // The card forces the dark scheme; the caret has to be ink
                 // like the words, or it is white on paper.
-                .tint(Self.ink)
+                .tint(ink)
                 // Tall enough that a short note leaves the rest of the sheet
                 // blank, the way paper does.
                 .frame(maxWidth: .infinity, minHeight: 170, alignment: .topLeading)

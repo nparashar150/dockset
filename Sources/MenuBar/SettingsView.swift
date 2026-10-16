@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import Observation
+import ServiceManagement
 
 /// Which Settings tab is showing.
 ///
@@ -11,6 +12,10 @@ import Observation
 final class SettingsSelection {
     static let shared = SettingsSelection()
     var current = "Shelf"
+    /// The widget the Widgets tab shows, when a caller named one. Here for the
+    /// same reason as `current`: "Widget Settings…" on a shelf widget has to
+    /// land on that widget even when the window is only being raised.
+    var widget: UUID?
     private init() {}
 }
 
@@ -34,6 +39,14 @@ struct SettingsView: View {
     /// one directional, with nothing in the app able to clear them.
     var onResumeFollowingScale: () -> Void
     var onResumeMirroringApps: () -> Void
+    /// Stops matching Apple's Dock, keeping the values in use. See
+    /// `AppState.takeOverFromSystemDock`.
+    var onTakeOver: () -> Void = {}
+    /// What the shelf is actually using, which while matching comes from
+    /// Apple's Dock rather than from the stored settings.
+    var inUse: () -> (position: DockPosition, autoHide: Bool, magnification: Bool) = {
+        (.bottom, false, false)
+    }
     /// Both present a file panel, which is AppKit's job rather than a view's.
     var onBackUp: () -> Void
     var onRestore: () -> Void
@@ -44,6 +57,8 @@ struct SettingsView: View {
     var onRenameProfile: (UUID, String) -> Void
     var onDuplicateProfile: (UUID?) -> Void
     var onDeleteProfile: (UUID?) -> Void
+    /// Sets or clears a layout's hot key; see `AppState.setShortcut`.
+    var onSetShortcut: (UUID, KeyCombo?) -> Void
     /// The last Dock-apply failure, and a way to be rid of it. Read rather
     /// than bound because it belongs to AppState and this view holds only the
     /// persisted state.
@@ -52,6 +67,9 @@ struct SettingsView: View {
     /// Puts Apple's Dock back the way it was before Docket first wrote to it.
     /// Only offered once there is something to go back to.
     var onRestoreOriginalDock: () -> Void
+    /// Hiding Apple's Dock writes its preferences and restarts it, which is
+    /// AppState's to do, not this view's.
+    var onSetHideAppleDock: (Bool) -> Void
 
     /// Which tab is showing, held outside the view.
     ///
@@ -189,10 +207,52 @@ struct SettingsView: View {
                        selection: $state.customDock.profileID, allowsNone: false)
                 .disabled(state.setup == .macOSDockOnly)
 
-            layoutList(.macOSDock, title: "Apple Dock",
-                       selection: $state.macOSDock.profileID, allowsNone: true)
+            // Apple's Dock, folded away: saved layouts for it, writing them
+            // back and putting the original back are tools a few people use
+            // a lot and most never touch, and laid open they made the pane
+            // read as the Dock's settings rather than the shelf's.
+            Section {
+                DisclosureGroup("Apple Dock", isExpanded: $showsAppleDock) {
+                    appleDockTools
+                }
+            }
 
             Section {
+                HStack {
+                    Button("Back Up…", action: onBackUp)
+                        .disabled(state.profiles.isEmpty)
+                    Button("Restore…", action: onRestore)
+                }
+            } header: {
+                Text("Backup")
+            } footer: {
+                Text("A backup holds your layouts, their items and widget settings, not the apps or files they point to. Restoring adds to what you have rather than replacing it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    @State private var showsAppleDock = false
+
+    @ViewBuilder private var appleDockTools: some View {
+            layoutList(.macOSDock, title: "Layouts",
+                       selection: $state.macOSDock.profileID, allowsNone: true)
+
+            Group {
+                Toggle(isOn: Binding(get: { state.hideAppleDock }, set: onSetHideAppleDock)) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Hide Apple's Dock")
+                        Text(state.setup == .customReplacement
+                             ? "Shelf only keeps the Dock behind the shelf to hold its place, so it cannot be hidden there."
+                             : "It never appears, even at the screen edge. Turn this off to bring it back.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .disabled(state.setup == .customReplacement)
+
                 HStack {
                     Button("Apply to Dock", action: onApplyMacOSProfile)
                         .disabled(state.activeMacOSProfile == nil)
@@ -223,22 +283,6 @@ struct SettingsView: View {
                     }
                 }
             }
-
-            Section {
-                HStack {
-                    Button("Back Up…", action: onBackUp)
-                        .disabled(state.profiles.isEmpty)
-                    Button("Restore…", action: onRestore)
-                }
-            } header: {
-                Text("Backup")
-            } footer: {
-                Text("A backup holds your layouts, their items and widget settings, not the apps or files they point to. Restoring adds to what you have rather than replacing it.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .formStyle(.grouped)
     }
 
     @ViewBuilder
@@ -249,7 +293,9 @@ struct SettingsView: View {
             // "None" is the documented "leave the live Dock completely alone"
             // state, which has to stay reachable after the first capture.
             if allowsNone {
-                LayoutRow(name: .constant("None"), editable: false,
+                // Named for what it does. "None" read as an action that had
+                // quietly failed: choosing it changes nothing, by design.
+                LayoutRow(name: .constant("Leave the Dock as it is"), editable: false,
                           active: selection.wrappedValue == nil,
                           onUse: { selection.wrappedValue = nil }) { EmptyView() }
             }
@@ -261,6 +307,8 @@ struct SettingsView: View {
                     active: selection.wrappedValue == profile.id,
                     onUse: { selection.wrappedValue = profile.id },
                     onDuplicate: { onDuplicateProfile(profile.id) },
+                    shortcut: profile.shortcut,
+                    onShortcut: { onSetShortcut(profile.id, $0) },
                     // The shelf has to point at something: deleting its last
                     // layout would leave it empty with no way back.
                     onDelete: kind == .customDock && mine.count <= 1
@@ -316,6 +364,10 @@ struct SettingsView: View {
                 .padding(.vertical, 2)
             }
 
+            Section("Startup") {
+                LaunchAtLoginToggle()
+            }
+
             Section("Menu Bar") {
                 // Refused when there is no shelf, because the icon is then the
                 // only way into an app with no Dock tile and no window of its
@@ -325,8 +377,12 @@ struct SettingsView: View {
                     .help(state.setup == .macOSDockOnly
                           ? "With no shelf on screen, this is the only way to reach Docket."
                           : "The shelf's own menu can still reach Settings with this off.")
-                Picker("Show next to it", selection: $state.menuBar.label) {
-                    ForEach(MenuBarLabelMode.allCases, id: \.self) { Text(title($0)).tag($0) }
+                // Which layout's name sits beside the icon. Only asked when
+                // there is an icon to sit beside.
+                if state.menuBar.showIcon {
+                    Picker("Name beside it", selection: $state.menuBar.label) {
+                        ForEach(MenuBarLabelMode.allCases, id: \.self) { Text(title($0)).tag($0) }
+                    }
                 }
             }
 
@@ -379,61 +435,57 @@ struct SettingsView: View {
     @ViewBuilder private var shelfSections: some View {
         Section {
             Toggle(isOn: $state.customDock.followSystemDock) {
-                // What is being inherited, under the switch that inherits it,
-                // rather than in a row and a footnote of its own.
+                // A starting point, not a mode that hides the shelf's own
+                // settings: every one stays below, and changing any of them
+                // makes the shelf's settings its own.
                 subtitled("Match Apple's Dock", state.customDock.followSystemDock
-                          ? SystemDockSettings.shared.summary
-                          : "Place and size the shelf yourself.")
+                          ? "\(SystemDockSettings.shared.summary). Change anything below to set your own."
+                          : "The shelf keeps its own settings.")
             }
 
-            // Hidden while the Dock dictates them, not greyed: following is
-            // the default, so greyed controls here were permanently dead for
-            // anyone who never turned it off.
-            if !state.customDock.followSystemDock {
-                HStack(spacing: 10) {
-                    ForEach(DockPosition.allCases, id: \.self) { edge in
-                        ChoiceCard(title: title(edge), selected: state.customDock.position == edge) {
-                            state.customDock.position = edge
-                        } picture: {
-                            EdgeSketch(edge: edge).frame(height: 44)
-                        }
+            HStack(spacing: 10) {
+                ForEach(DockPosition.allCases, id: \.self) { edge in
+                    ChoiceCard(title: title(edge), selected: inUse().position == edge) {
+                        onTakeOver()
+                        state.customDock.position = edge
+                    } picture: {
+                        EdgeSketch(edge: edge).frame(height: 44)
                     }
                 }
-                .padding(.vertical, 2)
+            }
+            .padding(.vertical, 2)
 
-                Picker("Display", selection: $state.customDock.displayID) {
-                    Text("Wherever the pointer is").tag(UInt32?.none)
-                    ForEach(NSScreen.screens, id: \.self) { screen in
-                        if let id = screen.docketDisplayID {
-                            Text(screen.localizedName).tag(UInt32?.some(id))
-                        }
-                    }
-                }
-
-                LabeledContent("Size") {
-                    HStack {
-                        // Through setScale, not around it. Binding straight to
-                        // the stored value skipped the override flag and never
-                        // wrote the profile, so the size silently reverted.
-                        Slider(value: Binding(get: { shownScale }, set: onSetScale),
-                               in: Geometry.scaleRange)
-                        Text("\(Int((shownScale * 100).rounded()))%")
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                            .frame(width: 44, alignment: .trailing)
+            Picker("Display", selection: $state.customDock.displayID) {
+                Text("Main display").tag(UInt32?.none)
+                ForEach(NSScreen.screens, id: \.self) { screen in
+                    if let id = screen.docketDisplayID {
+                        Text(screen.localizedName).tag(UInt32?.some(id))
                     }
                 }
             }
 
-            // The way back from sizing the shelf with its grip while
-            // following, which used to set an override nothing could clear.
-            if scaleOverridden {
-                LabeledContent {
-                    Button("Match", action: onResumeFollowingScale)
-                } label: {
-                    subtitled("Size", "Set by hand. Everything else still follows the Dock.")
+            LabeledContent("Size") {
+                HStack {
+                    // Through setScale, not around it. Binding straight to
+                    // the stored value skipped the override flag and never
+                    // wrote the profile, so the size silently reverted.
+                    Slider(value: Binding(get: { shownScale },
+                                          set: { onTakeOver(); onSetScale($0) }),
+                           in: Geometry.scaleRange)
+                    Text("\(Int((shownScale * 100).rounded()))%")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, alignment: .trailing)
+                    // The way back from sizing the shelf with its grip while
+                    // matching, beside the size it puts back rather than as a
+                    // second Size row.
+                    if scaleOverridden {
+                        Button("Match", action: onResumeFollowingScale)
+                            .controlSize(.small)
+                    }
                 }
             }
+
         }
 
         Section("Look") {
@@ -453,25 +505,29 @@ struct SettingsView: View {
             .padding(.vertical, 2)
             .help("Reduce Transparency in Accessibility settings overrides Glass and Clear.")
 
-            if !state.customDock.followSystemDock {
-                Toggle("Magnify under the pointer", isOn: $state.customDock.magnification)
-            }
+            Toggle("Magnify under the pointer", isOn: Binding(
+                get: { inUse().magnification },
+                set: { onTakeOver(); state.customDock.magnification = $0 }))
         }
 
         Section("Behaviour") {
-            // While following, hiding comes from the Dock's own setting.
-            if !state.customDock.followSystemDock {
-                Toggle("Hide until the pointer reaches the edge", isOn: $state.customDock.autoHide)
-            }
+            Toggle("Hide until the pointer reaches the edge", isOn: Binding(
+                get: { inUse().autoHide },
+                set: { onTakeOver(); state.customDock.autoHide = $0 }))
             // Only means anything while something is hiding.
-            if state.customDock.followSystemDock || state.customDock.autoHide {
+            if inUse().autoHide {
                 Toggle(isOn: $state.customDock.showHandleWhenHidden) {
                     subtitled("Leave a sliver when hidden", "So you can see where it is.")
                 }
             }
-            Toggle(isOn: $state.customDock.hideWhenMacOSDockAppears) {
-                subtitled("Make way for Apple's Dock",
-                          "When both are on one edge, reaching for one uncovers the other.")
+            // Only a question when the shelf and Apple's Dock share an edge;
+            // anywhere else the answer cannot make a difference, and a switch
+            // that does nothing is the clutter this pane is cutting.
+            if inUse().position == SystemDockSettings.shared.position {
+                Toggle(isOn: $state.customDock.hideWhenMacOSDockAppears) {
+                    subtitled("Make way for Apple's Dock",
+                              "It shares this edge, so reaching for one uncovers the other.")
+                }
             }
             Toggle(isOn: $state.customDock.useAsDesktopWidget) {
                 subtitled("Stay behind windows", "Sit on the desktop like a widget.")
@@ -923,6 +979,9 @@ private struct LayoutRow<Preview: View>: View {
     let active: Bool
     let onUse: () -> Void
     var onDuplicate: (() -> Void)?
+    var shortcut: KeyCombo?
+    /// Nil for a row that is not a layout, which then offers no hot key.
+    var onShortcut: ((KeyCombo?) -> Void)?
     var onDelete: (() -> Void)?
     @ViewBuilder var preview: () -> Preview
 
@@ -972,6 +1031,10 @@ private struct LayoutRow<Preview: View>: View {
 
             preview()
 
+            if let onShortcut {
+                ShortcutRecorder(combo: shortcut, onChange: onShortcut)
+            }
+
             if onDuplicate != nil || onDelete != nil {
                 Menu {
                     if editable { Button("Rename") { renaming = true } }
@@ -985,5 +1048,104 @@ private struct LayoutRow<Preview: View>: View {
                 .fixedSize()
             }
         }
+    }
+}
+
+/// Records a layout's hot key: click, press the combination.
+///
+/// Escape cancels and anything with fewer than two modifiers is refused with a
+/// beep, since a single modifier would take Command-1 and the like away from
+/// whatever app is in front.
+private struct ShortcutRecorder: View {
+    var combo: KeyCombo?
+    var onChange: (KeyCombo?) -> Void
+
+    @State private var monitor: Any?
+
+    private var recording: Bool { monitor != nil }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Button(recording ? "Type shortcut…" : combo?.display ?? "Add Shortcut") {
+                recording ? stop() : start()
+            }
+            .controlSize(.small)
+            .help("A key combination that switches to this layout from anywhere. Use at least two of ⌃ ⌥ ⇧ ⌘.")
+            if combo != nil, !recording {
+                Button {
+                    onChange(nil)
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Remove shortcut")
+                .accessibilityLabel("Remove shortcut")
+            }
+        }
+        .onDisappear { stop() }
+    }
+
+    private func start() {
+        ProfileHotkeys.shared.paused = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if event.keyCode == 53 { // Escape
+                stop()
+            } else if let combo = KeyCombo(event) {
+                onChange(combo)
+                stop()
+            } else {
+                NSSound.beep()
+            }
+            return nil
+        }
+    }
+
+    private func stop() {
+        guard let monitor else { return }
+        NSEvent.removeMonitor(monitor)
+        self.monitor = nil
+        ProfileHotkeys.shared.paused = false
+    }
+}
+
+/// Open at login, read from and written to macOS rather than the state file.
+///
+/// The user can remove the login item in System Settings at any time, so a
+/// saved preference would drift from the truth. The status is re-read
+/// whenever the Settings window comes forward.
+private struct LaunchAtLoginToggle: View {
+    @State private var status = SMAppService.mainApp.status
+    @State private var failure: String?
+
+    var body: some View {
+        Toggle("Open at login", isOn: Binding(get: { status == .enabled }, set: { apply($0) }))
+            .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+                status = SMAppService.mainApp.status
+            }
+        if status == .requiresApproval {
+            HStack {
+                Text("Allow Docket in Login Items to finish turning this on.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Open Login Items") { SMAppService.openSystemSettingsLoginItems() }
+                    .controlSize(.small)
+            }
+        }
+        if let failure {
+            Text(failure)
+                .font(.caption)
+                .foregroundStyle(.red)
+        }
+    }
+
+    private func apply(_ on: Bool) {
+        do {
+            if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
+            failure = nil
+        } catch {
+            failure = error.localizedDescription
+        }
+        status = SMAppService.mainApp.status
     }
 }

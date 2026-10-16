@@ -51,6 +51,8 @@ struct WidgetDetailBody: View {
             RemindersDetail(instance: instance, context: context)
         case .shortcut:
             ShortcutDetail(instance: instance, context: context)
+        case .ask:
+            AskDetail(instance: instance, context: context)
         default:
             // Only `.aiUsage` reaches this now, and it is a stub: no tile,
             // no service, nothing to read. Better an honest line than a

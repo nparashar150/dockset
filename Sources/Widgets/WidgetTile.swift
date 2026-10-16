@@ -58,6 +58,7 @@ public struct WidgetTile: View {
         case .calendar: CalendarTile(instance: instance, context: context)
         case .reminders: RemindersTile(instance: instance, context: context)
         case .shortcut: ShortcutTile(instance: instance, context: context)
+        case .ask: AskTile(instance: instance, context: context)
         // Still to come; a labelled placeholder beats rendering nothing. None
         // of these four can be placed today, so nothing reaches this arm:
         // they have no WidgetCatalog entry at all, so make returns nil. It

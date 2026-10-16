@@ -227,28 +227,34 @@ struct RemindersTile: View {
         }
     }
 
+    /// The count, not the list. Titles in a 76pt column were cut to
+    /// "Renew d...", which named nothing; how many are due, and whether any
+    /// are late, is what fits and what the column is for. The list is a
+    /// click away in the panel.
     private var columnList: some View {
-        let hidden = ordered.count > 3 ? ordered.count - 2 : 0
-        return VStack(alignment: .leading, spacing: 3) {
-            ForEach(ordered.prefix(hidden > 0 ? 2 : 3)) { item in
-                HStack(spacing: 5) {
-                    dot(late: item.isOverdue(context.now))
-                    Text(item.title)
-                        .font(WidgetStyle.label(10))
-                        .foregroundStyle(WidgetStyle.primary)
-                    Spacer(minLength: 0)
+        VStack(spacing: 3) {
+            TileBadge(size: 30) {
+                Image(systemName: "checklist")
+                    .font(.system(size: 13))
+                    .foregroundStyle(WidgetStyle.primary)
+            }
+            .overlay(alignment: .topTrailing) {
+                // Late is a dot, not red text.
+                if overdueCount > 0 {
+                    Circle().fill(Self.overdue).frame(width: 6, height: 6).offset(x: 1, y: -1)
                 }
-                .accessibilityElement(children: .combine)
             }
-            if hidden > 0 {
-                Text("\(hidden) more")
-                    .font(WidgetStyle.caption(9))
-                    .foregroundStyle(WidgetStyle.secondary)
-            }
+            Text("\(items.count)")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(WidgetStyle.primary)
+                .monospacedDigit()
+            Text(overdueCount > 0 ? "\(overdueCount) overdue" : "due today")
+                .font(.system(size: 11))
+                .foregroundStyle(WidgetStyle.secondary)
         }
         .lineLimit(1)
         .minimumScaleFactor(0.7)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 
     private var columnNext: some View {

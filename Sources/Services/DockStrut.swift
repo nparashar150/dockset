@@ -63,8 +63,17 @@ public enum DockStrut {
     ///
     /// Zero while the Dock is hidden: WindowServer keeps the rect but collapses
     /// it, which is exactly the state that leaves windows running underneath.
+    ///
+    /// Zero, too, for a rect still laid along another edge. Moving the Dock
+    /// restarts it, and until it comes back WindowServer still reports the
+    /// old one: a Dock that had been on the left read as a strip 963pt
+    /// "thick" on the bottom, the settle loop took two identical stale
+    /// readings as settled, and the shelf was centred in that, floating in
+    /// the middle of the screen with the enlarged Dock showing beneath it.
     public static func thickness(on edge: DockPosition) -> CGFloat {
         let rect = reserved()
+        let alongEdge = edge.isVertical ? rect.height >= rect.width : rect.width >= rect.height
+        guard alongEdge else { return 0 }
         return edge.isVertical ? rect.width : rect.height
     }
 
@@ -121,6 +130,39 @@ public enum DockStrut {
         defaults.setPersistentDomain(domainValues, forName: domain)
         // The Dock reads its preferences at launch, so the write alone changes
         // nothing until it is restarted.
+        CFPreferencesAppSynchronize(domain as CFString)
+    }
+
+    // MARK: Hiding entirely
+
+    /// Hides the Dock for good: auto-hide on, with a reveal delay so long it
+    /// never comes. Returns what was there before, for `restoreVisibility`.
+    public static func hideCompletely() -> DockVisibility {
+        let values = UserDefaults.standard.persistentDomain(forName: domain) ?? [:]
+        let snapshot = DockVisibility(autoHide: values["autohide"] as? Bool,
+                                      delay: (values["autohide-delay"] as? NSNumber)?.doubleValue,
+                                      timeModifier: (values["autohide-time-modifier"] as? NSNumber)?.doubleValue)
+        writeVisibility(autoHide: true, delay: 1000, timeModifier: snapshot.timeModifier)
+        restartDockNow()
+        return snapshot
+    }
+
+    /// Puts back exactly what `hideCompletely` found.
+    public static func restoreVisibility(_ snapshot: DockVisibility) {
+        writeVisibility(autoHide: snapshot.autoHide, delay: snapshot.delay,
+                        timeModifier: snapshot.timeModifier)
+        restartDockNow()
+    }
+
+    /// A nil value deletes the key, so a preference the user never set is
+    /// not left behind as one they did.
+    private static func writeVisibility(autoHide: Bool?, delay: Double?, timeModifier: Double?) {
+        let defaults = UserDefaults.standard
+        var values = defaults.persistentDomain(forName: domain) ?? [:]
+        values["autohide"] = autoHide
+        values["autohide-delay"] = delay
+        values["autohide-time-modifier"] = timeModifier
+        defaults.setPersistentDomain(values, forName: domain)
         CFPreferencesAppSynchronize(domain as CFString)
     }
 

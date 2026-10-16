@@ -46,6 +46,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.onShelfSettingsChanged = { [weak self] in self?.shelf.refresh() }
         state.onMenuBarSettingsChanged = { [weak self] in self?.menuBar.refreshButton() }
         state.onAppearanceChanged = { [weak self] in self?.applyAppearance() }
+        ProfileHotkeys.shared.onFire = { [weak self] id in self?.menuBar.switchTo(id) }
+        ProfileHotkeys.shared.apply(state.shortcuts)
+        state.onShortcutsChanged = { ProfileHotkeys.shared.apply($0) }
 
         // The Focus Timer runs through a shared provider the widgets read,
         // and Settings edits the persisted copy. Neither knew about the
@@ -79,6 +82,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor [state] in
             await StrutMode.repayIfOwed(state: state.state,
                                         clear: { state.state.borrowedDockPrefs = nil })
+            // After the strip's debt is settled, so a hidden Dock is hidden
+            // over the preferences the user actually has.
+            state.applyAppleDockVisibility()
         }
 
         startUpdateChecks(state)
@@ -114,6 +120,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let borrowed = state?.state.borrowedDockPrefs {
             state?.state.borrowedDockPrefs = nil
             DockStrut.releaseNow(borrowed)
+        }
+        // Then the hide, which was applied first and so is undone last. The
+        // choice itself is kept; the next launch hides the Dock again.
+        if let hidden = state?.state.hiddenDockPrefs {
+            state?.state.hiddenDockPrefs = nil
+            DockStrut.restoreVisibility(hidden)
         }
         state?.saveNow()
     }

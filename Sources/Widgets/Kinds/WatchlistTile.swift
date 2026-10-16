@@ -39,7 +39,7 @@ struct WatchlistTile: View {
         }
         .task(id: symbols) {
             guard !context.isPreview else { return }
-            StockService.shared.track(symbols)
+            StockService.shared.track(symbols, every: StockSettings.interval(instance.config))
         }
     }
 
@@ -53,7 +53,7 @@ struct WatchlistTile: View {
                 let symbol = symbols[index]
                 let quote = quote(symbol)
                 VStack(spacing: 1) {
-                    Text(symbol)
+                    Text(StockSettings.label(symbol, instance.config))
                         .font(WidgetStyle.label(11))
                         .foregroundStyle(WidgetStyle.primary)
                     // The shelf's value style, level with every other tile.
@@ -81,17 +81,21 @@ struct WatchlistTile: View {
                 let quote = quote(symbol)
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 4) {
-                        Text(symbol)
+                        Text(StockSettings.label(symbol, instance.config))
                             .font(WidgetStyle.label(9))
                             .foregroundStyle(WidgetStyle.secondary)
                         Spacer(minLength: 0)
-                        Text(quote?.percentText ?? "")
-                            .font(WidgetStyle.label(9))
-                            .foregroundStyle(accent(quote))
-                            .monospacedDigit()
+                        // An arrow, not the percentage: "+0.2..." was all a
+                        // 76pt column had room for, and the direction is the
+                        // part that can be read at a glance.
+                        if let quote {
+                            Image(systemName: quote.rising ? "arrow.up.right" : "arrow.down.right")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(accent(quote))
+                        }
                     }
                     Text(quote?.priceText ?? "-")
-                        .font(WidgetStyle.value(13))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(WidgetStyle.primary)
                         .monospacedDigit()
                 }

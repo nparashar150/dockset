@@ -95,6 +95,19 @@ public enum WidgetStyle {
 }
 
 public extension Color {
+    /// What panels write and draw with: white on the dark card, near-black on
+    /// the light one. Resolved against the view's own colour scheme, so a
+    /// panel kept dark on purpose still gets white from the same token.
+    ///
+    /// Used at an opacity for everything that is not text - a pane at 0.09,
+    /// a hairline at 0.1 - which is what lets one token serve both schemes:
+    /// black at 9% on light is the same quiet step as white at 9% on dark.
+    static let panelInk = Color(nsColor: NSColor(name: "panelInk") { appearance in
+        appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? .white
+            : NSColor(white: 0.11, alpha: 1)
+    })
+
     /// `#RRGGBB` / `#RRGGBBAA`. Falls back to clear rather than trapping - a
     /// bad swatch should not take the shelf down.
     init(hex: String) {

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UserNotifications
 
 /// A drop that fills up between drinks.
 ///
@@ -42,12 +43,9 @@ struct HydrationTile: View {
         return period - into
     }
 
-    /// Logs a drink: the glass empties and starts filling again.
     private func drink() {
         guard !context.isPreview else { return }
-        WidgetWriter.write(instance) { config in
-            config.set("lastDrink", .number(Date.now.timeIntervalSince1970))
-        }
+        Hydration.drink(instance)
     }
 
     /// Height of the water, 0…1, as elapsed progress toward the next drink.
@@ -64,6 +62,17 @@ struct HydrationTile: View {
     }
 
     var body: some View {
+        surface
+            // Turning reminders off in Settings has to take back the one
+            // already scheduled, and turning them on should not wait for the
+            // next drink. The tile is the part that is always on screen.
+            .onChange(of: instance.config.bool("reminders")) { _, _ in
+                guard !context.isPreview else { return }
+                Hydration.scheduleReminder(instance)
+            }
+    }
+
+    private var surface: some View {
         WidgetSurface {
             if context.position.isVertical {
                 // 76x88: drop, clock, and the control under them.
@@ -121,5 +130,68 @@ struct HydrationTile: View {
             withAnimation(.snappy(duration: 0.35)) { drink() }
         })
         .accessibilityLabel("Log a drink")
+    }
+}
+
+/// What logging a drink does, for the tile and the panel alike.
+@MainActor
+enum Hydration {
+    static func trackingAmounts(_ config: WidgetConfig) -> Bool {
+        config.bool("trackAmounts", default: true)
+    }
+
+    static func drinkSize(_ config: WidgetConfig) -> Double {
+        max(0, config.double("drinkSize", default: 250))
+    }
+
+    static func goal(_ config: WidgetConfig) -> Double {
+        max(1, config.double("goal", default: 2000))
+    }
+
+    /// Restarts the countdown, adds the drink to the log and moves the
+    /// reminder to the new due time.
+    static func drink(_ instance: WidgetInstance) {
+        let now = Date.now.timeIntervalSince1970
+        var updated = instance
+        WidgetWriter.write(instance) { config in
+            config.set("lastDrink", .number(now))
+            var log = HydrationLog(config)
+            log.add(.init(at: now, millilitres: trackingAmounts(config) ? drinkSize(config) : 0))
+            config.set(HydrationLog.key, log.value)
+            updated.config = config
+        }
+        scheduleReminder(updated)
+    }
+
+    /// One pending notification per widget, at the next due time.
+    ///
+    /// Permission is asked the first time one is actually scheduled, which is
+    /// after the user turned reminders on and logged a drink: the moment it
+    /// is obviously wanted.
+    static func scheduleReminder(_ instance: WidgetInstance) {
+        let center = UNUserNotificationCenter.current()
+        let id = "hydration.\(instance.id.uuidString)"
+        center.removePendingNotificationRequests(withIdentifiers: [id])
+        guard instance.config.bool("reminders", default: false) else { return }
+
+        let duration = max(60, instance.config.double("duration", default: 2700))
+        let last = instance.config.double("lastDrink")
+        let due = last > 0 ? last + duration : Date.now.timeIntervalSince1970 + duration
+        let wait = due - Date.now.timeIntervalSince1970
+        // Already overdue: the tile is showing it, and a notification for
+        // something past would land the instant reminders are switched on.
+        guard wait > 1 else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "Time for a drink"
+        content.body = "It has been \(Duration.seconds(duration).formatted(.units(allowed: [.hours, .minutes], width: .wide))) since the last one."
+        content.sound = .default
+        let request = UNNotificationRequest(
+            identifier: id, content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: wait, repeats: false))
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else { return }
+            center.add(request)
+        }
     }
 }

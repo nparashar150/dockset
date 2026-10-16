@@ -108,10 +108,11 @@ final class LibraryWindow: HostedWindow {
 final class SettingsWindow: HostedWindow {
     static let shared = SettingsWindow()
 
-    func show(app: AppState, tab: String = "Shelf") {
+    func show(app: AppState, tab: String = "Shelf", widget: UUID? = nil) {
         // Set before presenting, so a window that is only being raised still
-        // lands on the tab the caller asked for.
+        // lands on the tab, and the widget, the caller asked for.
         SettingsSelection.shared.current = tab
+        if let widget { SettingsSelection.shared.widget = widget }
         @Bindable var bindable = app
         present(
             SettingsView(
@@ -122,6 +123,8 @@ final class SettingsWindow: HostedWindow {
                 onSetScale: { app.setScale($0) },
                 onResumeFollowingScale: { app.resumeFollowingScale() },
                 onResumeMirroringApps: { app.resumeMirroringApps() },
+                onTakeOver: { app.takeOverFromSystemDock() },
+                inUse: { (app.effectivePosition, app.effectiveAutoHide, app.magnificationEnabled) },
                 onBackUp: { Self.backUp(app) },
                 onRestore: { Self.restore(app) },
                 onCreateProfile: { kind in
@@ -131,9 +134,11 @@ final class SettingsWindow: HostedWindow {
                 onRenameProfile: { app.renameProfile($0, to: $1) },
                 onDuplicateProfile: { if let id = $0 { app.duplicateProfile(id) } },
                 onDeleteProfile: { if let id = $0 { app.deleteProfile(id) } },
+                onSetShortcut: { app.setShortcut($1, for: $0) },
                 lastError: app.lastError,
                 onClearError: { app.clearError() },
-                onRestoreOriginalDock: { Task { await app.restoreOriginalDock() } }
+                onRestoreOriginalDock: { Task { await app.restoreOriginalDock() } },
+                onSetHideAppleDock: { app.setHideAppleDock($0) }
             ),
             title: "Docket Settings",
             // Taller and resizable, because the Widgets tab is not a fixed

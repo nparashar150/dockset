@@ -1,199 +1,86 @@
-import Foundation
 import SwiftUI
 
-/// System Activity said at length: the tile's gauges at a size that can hold a
-/// number, and under them the figures a 42pt ring has no room for.
+/// System Activity said at length: a row per reading the widget shows, each
+/// its current figure beside its last minute as a dithered chart.
+///
+/// The stock panel's chart, because it was the one that read best: a line
+/// with the ground under it stippled in, rather than a smooth wash. One row
+/// per metric rather than every line on one chart, since each gets its own
+/// scale fitted to it - memory moving between 75 and 77% is invisible on a
+/// 0 to 100 axis shared with a CPU that jumps from 5 to 60.
 ///
 /// Which metrics appear is the widget's own `metrics` config, chosen per
-/// metric in Dock Settings, so the panel has to follow it rather than assume
-/// the CPU-and-memory default it happens to ship with.
+/// metric in Dock Settings, so the panel follows it rather than assuming the
+/// CPU-and-memory default it ships with.
 struct SystemActivityDetail: View {
     var instance: WidgetInstance
     var context: WidgetContext
 
     var body: some View {
         // Graphite with a violet cast: a machine's insides, dark enough that
-        // the rings' own colours are the only colour in it.
+        // the charts' own colours are the only colour in it.
         DetailCard {
             MeshBackdrop(color: Color(red: 0.3, green: 0.24, blue: 0.5))
         } content: {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: Self.gaugeGap) {
-                    ForEach(metrics, id: \.self) { gauge($0) }
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(metrics, id: \.self) { row($0) }
+                HStack {
+                    Text(span)
+                    Spacer()
+                    Text("Now")
                 }
-                .frame(maxWidth: .infinity)
-
-                // The figures each ring leaves out, side by side rather
-                // than a column of rows. Two to a line, since a GiB
-                // reading needs the width.
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 8),
-                                    GridItem(.flexible(), spacing: 8)], spacing: 8) {
-                    ForEach(metrics, id: \.self) { chip($0) }
-                }
-
-                // The last minute, for the metrics that move. Disk and
-                // battery keep a history that would be a flat line, so they
-                // are not drawn one.
-                if !charted.isEmpty { history }
+                .font(WidgetStyle.caption(10))
+                .foregroundStyle(Color.panelInk.opacity(0.45))
             }
+            // The card's height, shared out between the rows, so one metric
+            // gets one tall chart and four get four short ones.
+            .frame(height: DetailCard<EmptyView, EmptyView>.height - 32)
         }
     }
 
-    // MARK: History
+    private func row(_ metric: Metric) -> some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 5) {
+                    Circle().fill(metric.color).frame(width: 7, height: 7)
+                    Text(metric.label)
+                        .font(WidgetStyle.label(11))
+                        .foregroundStyle(Color.panelInk.opacity(0.7))
+                }
+                Text("\(whole(value(metric)))%")
+                    .font(.system(size: 22, weight: .light))
+                    .monospacedDigit()
+                    .foregroundStyle(WidgetStyle.primary)
+                    .rollingValue(whole(value(metric)))
+            }
+            .frame(width: 82, alignment: .leading)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .accessibilityElement(children: .combine)
 
-    private var charted: [Metric] {
-        metrics.filter { !samples($0).isEmpty }
+            DitherChart(samples: samples(metric), tint: metric.color,
+                        range: Self.fit(samples(metric)), lineWidth: 1.5)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityHidden(true)
+        }
+        .frame(maxHeight: .infinity)
     }
 
-    /// One line per moving metric, over a shared minute.
-    ///
-    /// The weather panel earns its keep by showing the shape of the next few
-    /// hours rather than one temperature; this is the same idea pointed
-    /// backwards. The rings say where things are, and this says whether they
-    /// are on their way up.
-    ///
-    /// To the card's edges and foot, as the ground the readings stand on.
-    private var history: some View {
-        ZStack(alignment: .topLeading) {
-            ZStack {
-                ForEach(charted, id: \.self) { metric in
-                    // Absolute, so a CPU idling low sits low and the lines
-                    // can honestly be read against each other.
-                    DitherChart(samples: samples(metric), tint: metric.color,
-                                filled: charted.count == 1, range: 0...1)
-                }
-            }
-            .frame(height: 54)
-            .frame(maxWidth: .infinity)
-            .padding(.top, 14)
-            Text(span.uppercased())
-                .font(.system(size: 9, weight: .semibold))
-                .tracking(0.6)
-                .foregroundStyle(.white.opacity(0.55))
-                .padding(.horizontal, 16)
-        }
-        .padding(.horizontal, -16)
-        .padding(.bottom, -16)
+    /// The series' own range with room around it, never narrower than a
+    /// fifth of the scale, so a near-flat reading stays near-flat instead of
+    /// having its noise blown up to fill the row.
+    private static func fit(_ samples: [Double]) -> ClosedRange<Double> {
+        guard let low = samples.min(), let high = samples.max() else { return 0...1 }
+        let span = max(high - low, 0.2) * 1.4
+        let lower = max(0, min((low + high) / 2 - span / 2, 1 - span))
+        return lower ... min(1, lower + span)
     }
 
     /// Named with the span the buffer actually holds, which is under a minute
     /// until it fills.
     private var span: String {
-        let count = charted.map { samples($0).count }.max() ?? 0
-        return count >= SystemMetrics.historyLength ? "Last 60 seconds" : "Last \(count) seconds"
-    }
-
-    private func samples(_ metric: Metric) -> [Double] {
-        guard !context.isPreview else { return [] }
-        return SystemMetrics.shared.history(for: metric.rawValue)
-    }
-
-    // MARK: Gauges
-
-    private static let gaugeGap: CGFloat = 12
-
-    /// Small enough to be a reading rather than a poster.
-    ///
-    /// These were sized to fill the panel's width - 93pt across for three
-    /// metrics - which put a 24pt figure inside each and left the gauges
-    /// occupying most of the panel while saying one number each. A gauge is
-    /// worth its space at the size the eye can take in at a glance; the width
-    /// it gives back is what lets the figures and the graph below it fit.
-    ///
-    /// Larger on the card than it was on the form, now that the rows under
-    /// it have become chips and given the height back.
-    private var diameter: CGFloat {
-        let content = WidgetDetail.width(instance.kind) - 32
-        let count = CGFloat(metrics.count)
-        return min(72, (content - Self.gaugeGap * (count - 1)) / count)
-    }
-
-    private func gauge(_ metric: Metric) -> some View {
-        VStack(spacing: 6) {
-            MetricProgressRing(progress: value(metric),
-                               tint: metric.color,
-                               // Neutral, not a dim copy of the arc's own
-                               // colour: tinting both made the unfilled part
-                               // read as a second, muddier reading.
-                               track: .white.opacity(0.12),
-                               diameter: diameter,
-                               lineWidth: diameter * 0.11) {
-                percent(value(metric), size: diameter * 0.30)
-            }
-            // The tile's ring carries a symbol because a 42pt card has nowhere
-            // to put a caption. At this size the reading goes back inside and
-            // the name underneath, with the arc's colour tying the two.
-            Text(metric.label)
-                .font(WidgetStyle.caption(11))
-                .foregroundStyle(WidgetStyle.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(metric.label)
-        .accessibilityValue("\(whole(value(metric))) percent")
-    }
-
-    @ViewBuilder
-    private func percent(_ value: Double, size: CGFloat) -> some View {
-        let reading = whole(value)
-        HStack(spacing: 0) {
-            Text("\(reading)")
-                .font(.system(size: size, weight: .bold))
-                .monospacedDigit()
-                .foregroundStyle(WidgetStyle.primary)
-                .rollingValue(reading)
-            // Smaller than the figure, so a three-digit reading still clears
-            // the arc it sits inside.
-            Text("%")
-                .font(.system(size: size * 0.62, weight: .bold))
-                .foregroundStyle(WidgetStyle.secondary)
-        }
-    }
-
-    // MARK: Detail
-
-    private func chip(_ metric: Metric) -> some View {
-        let line = detail(metric)
-        return StatChip(label: line.label, value: line.value)
-    }
-
-    /// The one fact each gauge leaves out.
-    ///
-    /// The sampler publishes fractions, so memory is the only one that can be
-    /// restated in bytes - its fraction is measured against
-    /// `physicalMemory`, which makes the multiplication the reading itself
-    /// rather than a guess. The others say what they are a fraction *of*, or
-    /// what the number cannot show, instead of inventing an absolute figure.
-    private func detail(_ metric: Metric) -> (label: String, value: String) {
-        switch metric {
-        case .cpu:
-            // The ring is this second; the average is the minute behind it,
-            // off the same series the tile's sparkline draws. Named with the
-            // span it actually has, which is shorter than a minute until the
-            // history fills.
-            let series = context.isPreview ? [] : SystemMetrics.shared.cpuHistory
-            guard !series.isEmpty else { return ("Average CPU", "-") }
-            let average = series.reduce(0, +) / Double(series.count)
-            return ("Average CPU", "\(whole(average))%")
-        case .memory:
-            let total = Double(ProcessInfo.processInfo.physicalMemory)
-            let gib = 1024.0 * 1024 * 1024
-            return ("Memory used",
-                    String(format: "%.1f / %.0f GiB", value(metric) * total / gib, total / gib))
-        case .disk:
-            // The percentage is the ring's job. This is the figure you
-            // actually act on, off the same sample.
-            let free = Double(SystemMetrics.shared.diskFree)
-            let total = Double(SystemMetrics.shared.diskTotal)
-            guard !context.isPreview, total > 0 else { return ("Startup volume", "-") }
-            let gib = 1024.0 * 1024 * 1024
-            return ("Startup volume free",
-                    String(format: "%.0f / %.0f GiB", free / gib, total / gib))
-        case .battery:
-            let mac = context.isPreview ? nil : BatteryMetrics.shared.device(.mac)
-            guard let mac, mac.present else { return ("Mac battery", "Not reported") }
-            return ("Mac battery", mac.charging ? "Charging" : "On battery")
-        }
+        let count = metrics.map { samples($0).count }.max() ?? 0
+        return count >= SystemMetrics.historyLength ? "Last minute" : "Last \(count)s"
     }
 
     // MARK: Data
@@ -205,6 +92,10 @@ struct SystemActivityDetail: View {
             .strings("metrics", default: ["cpu", "memory"])
             .compactMap(Metric.init(rawValue:))
         return parsed.isEmpty ? [.cpu, .memory] : parsed
+    }
+
+    private func samples(_ metric: Metric) -> [Double] {
+        context.isPreview ? metric.sampleHistory : SystemMetrics.shared.history(for: metric.rawValue)
     }
 
     private func value(_ metric: Metric) -> Double {
@@ -229,21 +120,28 @@ struct SystemActivityDetail: View {
     private enum Metric: String {
         case cpu, memory, disk, battery
 
-        var label: String {
-            switch self {
-            case .cpu: "CPU"
-            case .memory: "Memory"
-            case .disk: "Disk"
-            case .battery: "Battery"
-            }
-        }
-
         var color: Color {
             switch self {
             case .cpu: Color(hex: MetricColor.cpu)
             case .memory: Color(hex: MetricColor.memory)
             case .disk: Color(hex: MetricColor.storage)
             case .battery: Color(hex: MetricColor.batteryPresent)
+            }
+        }
+
+        /// A minute for the library, which has no sampler behind it.
+        var sampleHistory: [Double] {
+            (0 ..< SystemMetrics.historyLength).map { i in
+                sample + 0.06 * sin(Double(i) / 6 + Double(rawValue.count))
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .cpu: "CPU"
+            case .memory: "Memory"
+            case .disk: "Disk"
+            case .battery: "Battery"
             }
         }
 

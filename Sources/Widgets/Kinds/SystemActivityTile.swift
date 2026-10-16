@@ -160,10 +160,13 @@ struct SystemActivityTile: View {
                             .frame(maxHeight: .infinity, alignment: .bottom)
                     }
                     VStack(spacing: 0) {
-                        percent(value(metric), size: 18)
+                        percent(value(metric), size: 17)
+                        // Grey like every other caption on the shelf: the
+                        // metric's colour on its name was the loudest thing in
+                        // a side column.
                         Text(metric.short)
-                            .font(WidgetStyle.label(9))
-                            .foregroundStyle(metric.color)
+                            .font(.system(size: 11))
+                            .foregroundStyle(WidgetStyle.secondary)
                     }
                     .padding(.top, 2)
                 }
@@ -179,15 +182,17 @@ struct SystemActivityTile: View {
         VStack(spacing: 0) {
             ForEach(metrics, id: \.self) { metric in
                 VStack(spacing: 2) {
+                    // White on a faint track, as the side shelf's other
+                    // rings are; colour stays on the wide layout.
                     MetricProgressRing(progress: value(metric),
-                                       tint: metric.color,
-                                       track: metric.color.opacity(0.18),
+                                       tint: WidgetStyle.primary.opacity(0.85),
+                                       track: WidgetStyle.primary.opacity(0.1),
                                        diameter: 36,
-                                       lineWidth: 4.5) {
+                                       lineWidth: 3) {
                         percent(value(metric), size: 11)
                     }
                     Text(metric.short)
-                        .font(WidgetStyle.label(9))
+                        .font(.system(size: 11))
                         .foregroundStyle(WidgetStyle.secondary)
                 }
                 .frame(height: 54)

@@ -1,22 +1,20 @@
 import Foundation
 import SwiftUI
 
-/// The hydration reminder in wall-clock terms, plus a button big enough to
-/// press without aiming at it.
-///
-/// The widget stores two things and only two: how long a cycle is
-/// (`duration`) and when the last drink was logged (`lastDrink`). There is no
-/// count of glasses, no daily goal and no log - one timestamp is overwritten
-/// by the next - so this panel draws no tally, no goal ring and no week's
-/// chart. Inventing any of them would be inventing the data behind them.
+/// The hydration reminder in wall-clock terms, the day's drinks, and a button
+/// big enough to press without aiming at it.
 ///
 /// What it can say that the tile cannot: the clock time the next drink is due
-/// at rather than a countdown to it, when the last one actually went in, the
-/// interval those two are separated by, and - the tile's blind spot, since its
-/// countdown floors at 0:00 - how long a drink has been overdue.
+/// at rather than a countdown to it, when the last one went in, how long a
+/// drink has been overdue (the tile's countdown floors at 0:00), and the
+/// `HydrationLog`: today against the goal, the week behind it, and today's
+/// drinks one by one, each removable with an undo for the slip.
 struct HydrationDetail: View {
     var instance: WidgetInstance
     var context: WidgetContext
+
+    /// The last drink taken off the log, so a misclick can be put back.
+    @State private var removed: HydrationLog.Drink?
 
     var body: some View {
         // Seconds, to agree with the tile's own clock. It has to be a schedule
@@ -37,9 +35,9 @@ struct HydrationDetail: View {
         return DetailCard {
             ZStack(alignment: .bottom) {
                 MeshBackdrop(color: accent)
-                Water(level: left / duration,
-                      phase: now.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 4) / 4,
-                      colour: accent)
+                // Never quite full: a surface at the card's top edge read as
+                // a glitch rather than a glass that was just topped up.
+                Water(level: min(0.85, left / duration), colour: accent)
             }
         } content: {
             VStack(alignment: .leading, spacing: 14) {
@@ -47,7 +45,7 @@ struct HydrationDetail: View {
                     Text(left > 0 ? "NEXT DRINK AT" : "DUE NOW")
                         .font(.system(size: 10, weight: .semibold))
                         .tracking(0.8)
-                        .foregroundStyle(.white.opacity(0.7))
+                        .foregroundStyle(Color.panelInk.opacity(0.7))
                     // A time of day, which is the thing the tile's countdown is
                     // not: "2:49 PM" is a moment you can plan around, "17:22" is
                     // one you have to do arithmetic on.
@@ -59,7 +57,7 @@ struct HydrationDetail: View {
                         .minimumScaleFactor(0.6)
                     Text(headlineCaption(left, now: now))
                         .font(WidgetStyle.label(13))
-                        .foregroundStyle(.white.opacity(0.8))
+                        .foregroundStyle(Color.panelInk.opacity(0.8))
                         .monospacedDigit()
                 }
 
@@ -69,9 +67,165 @@ struct HydrationDetail: View {
                         .frame(width: 96)
                 }
 
+                today(now: now)
+
                 drinkButton
             }
         }
+    }
+
+    // MARK: Today
+
+    private var log: HydrationLog {
+        if context.isPreview {
+            let now = Date.now.timeIntervalSince1970
+            return HydrationLog(drinks: [.init(at: now - 7200, millilitres: 250),
+                                         .init(at: now - 3600, millilitres: 250)])
+        }
+        return HydrationLog(instance.config)
+    }
+
+    private var tracking: Bool { Hydration.trackingAmounts(instance.config) }
+
+    @ViewBuilder
+    private func today(now: Date) -> some View {
+        let drinks = log.drinks(on: now)
+        VStack(alignment: .leading, spacing: 8) {
+            if tracking {
+                let total = drinks.reduce(0) { $0 + $1.millilitres }
+                let goal = Hydration.goal(instance.config)
+                HStack(alignment: .firstTextBaseline) {
+                    Text("TODAY")
+                        .font(.system(size: 9, weight: .semibold))
+                        .tracking(0.6)
+                        .foregroundStyle(Color.panelInk.opacity(0.6))
+                    Spacer()
+                    Text("\(Int(total)) of \(Int(goal)) mL")
+                        .font(WidgetStyle.label(12))
+                        .foregroundStyle(WidgetStyle.primary)
+                        .monospacedDigit()
+                }
+                progress(min(1, total / goal))
+                week(now: now, goal: goal)
+            } else {
+                Text(drinks.count == 1 ? "1 drink today" : "\(drinks.count) drinks today")
+                    .font(WidgetStyle.label(12))
+                    .foregroundStyle(WidgetStyle.primary)
+            }
+            // The latest few, newest first: the one most likely to be a
+            // misclick is the one just logged.
+            ForEach(Array(drinks.suffix(4).reversed()), id: \.self) { drink in
+                HStack {
+                    Text(clock(Date(timeIntervalSince1970: drink.at)))
+                        .monospacedDigit()
+                    if drink.millilitres > 0 {
+                        Text("\(Int(drink.millilitres)) mL")
+                            .foregroundStyle(Color.panelInk.opacity(0.7))
+                    }
+                    Spacer()
+                    Button {
+                        remove(drink)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(Color.panelInk.opacity(0.5))
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove this drink")
+                    .accessibilityLabel("Remove drink at \(clock(Date(timeIntervalSince1970: drink.at)))")
+                }
+                .font(WidgetStyle.caption(12))
+                .foregroundStyle(WidgetStyle.primary)
+            }
+            if let removed {
+                Button("Undo removal") { restore(removed) }
+                    .buttonStyle(.plain)
+                    .font(WidgetStyle.label(11))
+                    .foregroundStyle(Color.panelInk)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.panelInk.opacity(0.14)))
+            }
+        }
+        .padding(10)
+        .glassPane(cornerRadius: 10)
+    }
+
+    /// Today against the goal as one smooth bar.
+    private func progress(_ fraction: Double) -> some View {
+        Capsule()
+            .fill(Color.panelInk.opacity(0.1))
+            .overlay(alignment: .leading) {
+                GeometryReader { geo in
+                    Capsule()
+                        .fill(accent)
+                        .frame(width: max(6, geo.size.width * fraction))
+                }
+            }
+            .frame(height: 6)
+            .animation(.snappy(duration: 0.35), value: fraction)
+    }
+
+    /// Seven days, a column each with its weekday under it, today last and
+    /// the goal as the top. An empty day keeps its column as a faint track,
+    /// so the week reads as a week rather than a row of dashes.
+    private func week(now: Date, goal: Double) -> some View {
+        let totals = log.totals(endingOn: now)
+        let calendar = Calendar.current
+        return HStack(alignment: .bottom, spacing: 6) {
+            ForEach(totals.indices, id: \.self) { index in
+                let fraction = min(1, totals[index] / goal)
+                let day = calendar.date(byAdding: .day, value: index - (totals.count - 1), to: now) ?? now
+                VStack(spacing: 4) {
+                    Capsule()
+                        .fill(Color.panelInk.opacity(0.08))
+                        .frame(width: 8, height: 34)
+                        .overlay(alignment: .bottom) {
+                            if fraction > 0 {
+                                Capsule()
+                                    .fill(index == totals.count - 1 ? accent : accent.opacity(0.6))
+                                    .frame(width: 8, height: max(8, 34 * fraction))
+                            }
+                        }
+                    Text(day.formatted(.dateTime.weekday(.narrow)))
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(Color.panelInk.opacity(index == totals.count - 1 ? 0.8 : 0.45))
+                }
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Last seven days")
+        .accessibilityValue(totals.map { "\(Int($0)) mL" }.joined(separator: ", "))
+    }
+
+    private func remove(_ drink: HydrationLog.Drink) {
+        guard !context.isPreview else { return }
+        WidgetWriter.write(instance) { config in
+            var log = HydrationLog(config)
+            log.remove(drink)
+            config.set(HydrationLog.key, log.value)
+        }
+        removed = drink
+        relayout()
+    }
+
+    /// Back into the log only: the countdown is not rewound, because a later
+    /// drink may have moved it since.
+    private func restore(_ drink: HydrationLog.Drink) {
+        guard !context.isPreview else { return }
+        WidgetWriter.write(instance) { config in
+            var log = HydrationLog(config)
+            log.add(drink)
+            config.set(HydrationLog.key, log.value)
+        }
+        removed = nil
+        relayout()
+    }
+
+    /// The list changes the panel's height, and the panel is otherwise sized
+    /// once as it opens.
+    private func relayout() {
+        Task { @MainActor in WidgetDetailWindow.shared.relayout() }
     }
 
     // MARK: Action
@@ -87,10 +241,10 @@ struct HydrationDetail: View {
         } label: {
             Label("Log a drink", systemImage: "drop.fill")
                 .font(WidgetStyle.label(13))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.panelInk)
                 .frame(maxWidth: .infinity)
                 .frame(height: 38)
-                .background(Capsule().fill(.white.opacity(0.24)))
+                .background(Capsule().fill(Color.panelInk.opacity(0.24)))
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
@@ -154,9 +308,9 @@ struct HydrationDetail: View {
 
     private func drink() {
         guard !context.isPreview else { return }
-        WidgetWriter.write(instance) { config in
-            config.set("lastDrink", .number(Date.now.timeIntervalSince1970))
-        }
+        Hydration.drink(instance)
+        removed = nil
+        relayout()
     }
 
     private var accent: Color {
@@ -179,9 +333,13 @@ struct HydrationDetail: View {
 /// Water filling the card to `level`, its surface a slow double wave.
 private struct Water: View {
     var level: Double
-    /// 0…1 through one swell, so the surface moves with the panel's tick.
-    var phase: Double
     var colour: Color
+
+    /// Fixed: the surface used to move with the panel's one-second tick,
+    /// which drew it as a jump every second rather than a swell.
+    private let phase = 0.0
+
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         GeometryReader { geo in
@@ -189,10 +347,10 @@ private struct Water: View {
             let top = size.height * (1 - min(1, max(0.04, level)))
             ZStack {
                 surface(size, top: top, shift: phase + 0.5, amplitude: 5)
-                    .fill(MeshBackdrop.muted(colour).opacity(0.5))
+                    .fill(MeshBackdrop.muted(colour, on: scheme).opacity(0.5))
                 surface(size, top: top + 3, shift: phase, amplitude: 4)
-                    .fill(LinearGradient(colors: [MeshBackdrop.muted(colour, by: 0.62),
-                                                  MeshBackdrop.muted(colour, by: 0.85)],
+                    .fill(LinearGradient(colors: [MeshBackdrop.muted(colour, by: 0.62, on: scheme),
+                                                  MeshBackdrop.muted(colour, by: 0.85, on: scheme)],
                                          startPoint: .top, endPoint: .bottom))
             }
             .animation(.smooth(duration: 0.8), value: level)

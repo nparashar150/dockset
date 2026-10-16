@@ -35,6 +35,9 @@ public final class AppState {
             if state.timer != oldValue.timer {
                 onTimerChanged?(state.timer)
             }
+            if shortcuts != oldValue.shortcuts {
+                onShortcutsChanged?(shortcuts)
+            }
             // A panel open on a widget that has just left the shelf. Removing
             // one goes through the shelf's menu, the Settings list, a drag
             // off the shelf or a change of layout, and every one of them
@@ -57,6 +60,22 @@ public final class AppState {
     /// The Focus Timer settings, which the widgets read through their own
     /// shared provider rather than from here.
     @ObservationIgnored public var onTimerChanged: (@MainActor (TimerState) -> Void)?
+    /// Every layout's hot key, for the registry that listens for them.
+    @ObservationIgnored public var onShortcutsChanged: (@MainActor ([UUID: KeyCombo]) -> Void)?
+
+    public var shortcuts: [UUID: KeyCombo] { state.shortcuts }
+
+    /// Gives `profileID` a hot key, taking it from any layout that had it:
+    /// two layouts must never answer one combination.
+    public func setShortcut(_ combo: KeyCombo?, for profileID: UUID) {
+        for index in state.profiles.indices {
+            if state.profiles[index].id == profileID {
+                state.profiles[index].shortcut = combo
+            } else if combo != nil, state.profiles[index].shortcut == combo {
+                state.profiles[index].shortcut = nil
+            }
+        }
+    }
 
     /// Ticks once a second. Widgets read this rather than each starting a
     /// timer of their own - one timer for the whole shelf.
@@ -554,6 +573,24 @@ public final class AppState {
         state.customDock.scaleOverridden = false
     }
 
+    /// Makes the shelf's settings its own, starting from what it is showing.
+    ///
+    /// Matching Apple's Dock is where a shelf starts, not a mode that hides
+    /// its controls: every setting is always there, and changing one while
+    /// matching first copies the values in use, so the shelf does not jump
+    /// to stale stored ones, and then stops matching.
+    public func takeOverFromSystemDock() {
+        guard state.customDock.followSystemDock else { return }
+        var dock = state.customDock
+        dock.position = effectivePosition
+        dock.autoHide = effectiveAutoHide
+        dock.magnification = magnificationEnabled
+        dock.scale = effectiveScale
+        dock.scaleOverridden = false
+        dock.followSystemDock = false
+        state.customDock = dock
+    }
+
     // MARK: Apple's Dock
 
     /// Captures the live Dock into a new profile without changing anything.
@@ -593,6 +630,28 @@ public final class AppState {
     }
 
     /// Puts back whatever the user had before Docket first wrote to the Dock.
+    /// Hides Apple's Dock entirely, or brings it back.
+    public func setHideAppleDock(_ hide: Bool) {
+        state.hideAppleDock = hide
+        applyAppleDockVisibility()
+    }
+
+    /// Makes the Dock's visibility match `hideAppleDock`.
+    ///
+    /// Not while the shelf is borrowing the Dock's strip ("Shelf only"): that
+    /// works by keeping the Dock showing behind the shelf, and hiding it would
+    /// collapse the strip the shelf stands in. Settings disables the switch
+    /// there, and this refuses it too, for a state file that asks anyway.
+    public func applyAppleDockVisibility() {
+        if state.hideAppleDock, state.hiddenDockPrefs == nil, state.borrowedDockPrefs == nil {
+            state.hiddenDockPrefs = DockStrut.hideCompletely()
+        } else if !state.hideAppleDock, let snapshot = state.hiddenDockPrefs {
+            state.hiddenDockPrefs = nil
+            DockStrut.restoreVisibility(snapshot)
+        }
+        SystemDockSettings.shared.refresh()
+    }
+
     public func restoreOriginalDock() async {
         guard let original = state.originalMacOSDock else { return }
         isApplying = true

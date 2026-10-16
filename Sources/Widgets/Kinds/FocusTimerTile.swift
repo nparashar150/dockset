@@ -74,7 +74,11 @@ struct FocusTimerTile: View {
                 // it and the phase named underneath.
                 VStack(spacing: 5) {
                     ZStack {
-                        ring(fraction: remaining / total, tint: tint, diameter: 44, width: 6)
+                        // The session colour muted toward ink and thinner, as
+                        // the wide card's badge has it.
+                        ring(fraction: remaining / total,
+                             tint: tint.mix(with: WidgetStyle.primary, by: 0.4),
+                             diameter: 44, width: 3.5)
                         Text(docketClockString(remaining))
                             .font(WidgetStyle.label(13))
                             .monospacedDigit()
@@ -84,7 +88,7 @@ struct FocusTimerTile: View {
                             .frame(width: 34)
                     }
                     Text(state.phase.label)
-                        .font(WidgetStyle.caption(9))
+                        .font(.system(size: 11))
                         .foregroundStyle(WidgetStyle.secondary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)

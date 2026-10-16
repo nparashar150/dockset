@@ -197,11 +197,12 @@ struct WeatherTile: View {
     /// 56pt of usable width: everything centred and stacked, the symbol
     /// smaller and the caption down to a single tight line.
     private var column: some View {
+        // Badge, value, caption: the same column every side-shelf tile uses.
         VStack(spacing: 2) {
-            icon(size: 21)
-            temperature(weather?.temperatureC, size: 17)
+            TileBadge(size: 30) { icon(size: 15) }
+            temperature(weather?.temperatureC, size: 16)
             Text(columnCaption)
-                .font(WidgetStyle.caption(10))
+                .font(.system(size: 11))
                 .foregroundStyle(WidgetStyle.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
@@ -237,6 +238,9 @@ struct WeatherTile: View {
             .foregroundStyle(WidgetStyle.primary)
             .font(.system(size: size))
             .frame(height: size)
+            // Still. A repeating breath here redrew the whole glass shelf
+            // every frame, for as long as the shelf was up - a fifth of a
+            // core, measured, to make a cloud pulse.
     }
 
     /// Big figure with a lighter degree mark riding on top of it. A missing

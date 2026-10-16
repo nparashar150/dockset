@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The panel behind both stock widgets: one symbol at length, or every symbol
@@ -7,12 +8,13 @@ import SwiftUI
 /// Stock is a Watchlist of one with room for a name and a chart - and both read
 /// the same cache through the same accessors as their tiles.
 ///
-/// Nothing here fetches. The panel only ever opens from a tile that is already
-/// tracking its symbols, so it renders whatever the cache holds and admits it
-/// when that is nothing; a second `track` would only duplicate the tile's.
+/// The day comes from the cache the tile is already keeping fresh. A longer
+/// range is fetched once when it is picked, and only then.
 struct StocksDetail: View {
     var instance: WidgetInstance
     var context: WidgetContext
+
+    @State private var range: StockRange = .day
 
     var body: some View {
         // Green or red before a number is read: the card is the day's move.
@@ -80,35 +82,93 @@ struct StocksDetail: View {
     // MARK: One symbol
 
     private var single: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        // The price is always the latest; the move and the chart are over
+        // the range picked, once it has arrived.
+        let ranged = range == .day ? quote(symbol)
+            : context.isPreview ? quote(symbol) : StockService.shared.quote(symbol, range: range)
+        return VStack(alignment: .leading, spacing: 10) {
             if let quote = quote(symbol) {
-                identity(quote)
+                HStack(alignment: .top) {
+                    identity(quote)
+                    Spacer(minLength: 8)
+                    if let volume = (ranged ?? quote).volumeText {
+                        Text("Vol \(volume)")
+                            .font(WidgetStyle.caption(11))
+                            .foregroundStyle(WidgetStyle.secondary)
+                            .monospacedDigit()
+                    }
+                }
                 price(quote)
-                change(quote)
-                chart(quote)
+                HStack {
+                    change(ranged ?? quote)
+                    Spacer(minLength: 8)
+                    rangePicker
+                }
+                if let ranged { chart(ranged) } else { loadingChart }
                 if quote.stale { staleNote }
             } else {
                 unavailable(symbol)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .task(id: range) {
+            guard !context.isPreview else { return }
+            await StockService.shared.load(symbol, range: range)
+        }
     }
 
-    private func identity(_ quote: StockQuote) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(quote.symbol)
-                .font(WidgetStyle.label(13))
-                .foregroundStyle(WidgetStyle.primary)
-            // The service falls back to the ticker when the endpoint sends no
-            // name; repeating it as a subtitle would read as a rendering bug.
-            if quote.name != quote.symbol {
-                Text(quote.name)
-                    .font(WidgetStyle.caption(11))
-                    .foregroundStyle(WidgetStyle.secondary)
+    private var rangePicker: some View {
+        HStack(spacing: 2) {
+            ForEach(StockRange.allCases, id: \.self) { option in
+                Button(option.title) { range = option }
+                    .buttonStyle(.plain)
+                    .font(WidgetStyle.label(10))
+                    .foregroundStyle(option == range ? .white : Color.panelInk.opacity(0.6))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(option == range ? Color.panelInk.opacity(0.2) : .clear))
+                    .accessibilityAddTraits(option == range ? .isSelected : [])
             }
         }
-        .lineLimit(1)
-        .truncationMode(.tail)
+    }
+
+    /// Holds the chart's place while a range loads, so the panel does not
+    /// change height under the pointer.
+    private var loadingChart: some View {
+        ProgressView()
+            .controlSize(.small)
+            .frame(maxWidth: .infinity)
+            .frame(height: 72)
+            .padding(.top, 6)
+    }
+
+    /// The ticker opens its Yahoo Finance page, which is where these numbers
+    /// come from and where the rest of them are.
+    private func identity(_ quote: StockQuote) -> some View {
+        let label = StockSettings.label(quote.symbol, instance.config)
+        return Button {
+            guard !context.isPreview, let url = quote.pageURL else { return }
+            NSWorkspace.shared.open(url)
+        } label: {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(WidgetStyle.label(13))
+                    .foregroundStyle(WidgetStyle.primary)
+                // The ticker under a custom name; otherwise the company,
+                // unless the endpoint sent none and it would repeat.
+                let subtitle = label != quote.symbol ? quote.symbol : quote.name
+                if subtitle != label {
+                    Text(subtitle)
+                        .font(WidgetStyle.caption(11))
+                        .foregroundStyle(WidgetStyle.secondary)
+                }
+            }
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .help("Open \(quote.symbol) on Yahoo Finance")
     }
 
     private func price(_ quote: StockQuote) -> some View {
@@ -142,7 +202,7 @@ struct StocksDetail: View {
                 .rollingValue(quote.changePercent)
         }
         .font(WidgetStyle.label(12))
-        .foregroundStyle(.white)
+        .foregroundStyle(Color.panelInk)
         .lineLimit(1)
         .padding(.horizontal, 9)
         .padding(.vertical, 4)
@@ -162,8 +222,8 @@ struct StocksDetail: View {
             // To the card's edges and foot, as the ground the price stands
             // on rather than a figure boxed underneath it.
             ZStack(alignment: .bottom) {
-                DitherChart(samples: samples, tint: .white.opacity(0.85))
-                    .frame(height: 84)
+                DitherChart(samples: samples, tint: Color.panelInk.opacity(0.85))
+                    .frame(height: 72)
                 // The ends of the plotted range, not a clock: the service keeps
                 // closes without their timestamps, so a time axis here would be
                 // guesswork.
@@ -184,7 +244,7 @@ struct StocksDetail: View {
     private func rangeLabel(_ value: Double?) -> some View {
         Text(value?.formatted(.number.precision(.fractionLength(2))) ?? "")
             .font(WidgetStyle.label(10))
-            .foregroundStyle(.white.opacity(0.85))
+            .foregroundStyle(Color.panelInk.opacity(0.85))
             .monospacedDigit()
             .shadow(color: .black.opacity(0.4), radius: 2)
     }
@@ -205,7 +265,11 @@ struct StocksDetail: View {
             }
             if quotes.contains(where: { $0?.stale == true }) { staleNote }
         }
+        // The card's full height, shared out between the rows: three short
+        // rows at the top of a tall card left a third of it empty, and the
+        // room is better spent on taller day lines.
         .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: DetailCard<EmptyView, EmptyView>.height - 32, alignment: .top)
     }
 
     /// A ticker as a watchlist app shows one: who it is on the left, how
@@ -217,7 +281,7 @@ struct StocksDetail: View {
     private func row(_ symbol: String, quote: StockQuote?) -> some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(symbol)
+                Text(StockSettings.label(symbol, instance.config))
                     .font(WidgetStyle.label(14))
                     .foregroundStyle(WidgetStyle.primary)
                 // The service falls back to the ticker when it has no name,
@@ -232,7 +296,7 @@ struct StocksDetail: View {
             .frame(width: 92, alignment: .leading)
 
             DayLine(samples: quote.map(series) ?? [], tint: accent(quote))
-                .frame(height: 26)
+                .frame(minHeight: 26, maxHeight: 48)
                 .frame(maxWidth: .infinity)
 
             VStack(alignment: .trailing, spacing: 3) {
@@ -252,7 +316,14 @@ struct StocksDetail: View {
         .minimumScaleFactor(0.75)
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
+        .frame(maxHeight: .infinity)
         .glassPane(cornerRadius: 10)
+        .contentShape(.rect)
+        .onTapGesture {
+            guard !context.isPreview, let url = quote?.pageURL else { return }
+            NSWorkspace.shared.open(url)
+        }
+        .help("Open \(symbol) on Yahoo Finance")
         // The tile's own weighting for a reading that has stopped arriving.
         .opacity(quote?.stale == true ? 0.55 : 1)
     }

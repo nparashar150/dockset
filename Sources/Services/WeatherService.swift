@@ -49,6 +49,10 @@ final class WeatherService {
 
     private(set) var current: WeatherNow?
     private(set) var hourly: [WeatherHour] = []
+    /// When MET last confirmed what is shown, by a fresh forecast or by a 304
+    /// saying nothing changed. What lets the panel say how old the reading
+    /// is, which is most of what makes an hourly forecast feel alive.
+    private(set) var updatedAt: Date?
 
     @ObservationIgnored private var coordinate: Coordinate?
     @ObservationIgnored private var city = ""
@@ -56,6 +60,19 @@ final class WeatherService {
     @ObservationIgnored private var lastModified: String?
     @ObservationIgnored private var loading = false
     @ObservationIgnored private var geocoded: [String: Coordinate] = [:]
+
+    /// What each place last showed, so switching between saved places is
+    /// instant and each keeps its own 15-minute allowance with MET, rather
+    /// than every switch being a fresh request for a place seen a minute ago.
+    private struct Snapshot {
+        var coordinate: Coordinate
+        var current: WeatherNow?
+        var hourly: [WeatherHour]
+        var updatedAt: Date?
+        var lastAttempt: Date?
+        var lastModified: String?
+    }
+    @ObservationIgnored private var snapshots: [String: Snapshot] = [:]
 
     private init() {}
 
@@ -67,15 +84,31 @@ final class WeatherService {
         let wanted = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if !wanted.isEmpty, wanted.caseInsensitiveCompare(city) != .orderedSame,
            let found = await coordinate(for: wanted) {
+            // Keep what this place showed, for when it is switched back to.
+            if let coordinate, !city.isEmpty {
+                snapshots[city.lowercased()] = Snapshot(
+                    coordinate: coordinate, current: current, hourly: hourly,
+                    updatedAt: updatedAt, lastAttempt: lastAttempt, lastModified: lastModified)
+            }
             city = wanted
             coordinate = found
-            // A new place must not keep showing the old place's numbers.
-            current = nil
-            hourly = []
-            lastAttempt = nil
-            lastModified = nil
+            // A place seen before comes back as it was; a new one must not
+            // keep showing the old place's numbers.
+            let saved = snapshots[wanted.lowercased()]
+            current = saved?.current
+            hourly = saved?.hourly ?? []
+            updatedAt = saved?.updatedAt
+            lastAttempt = saved?.lastAttempt
+            lastModified = saved?.lastModified
         }
         await refresh()
+    }
+
+    /// Whether a name can be found as a place, for saving it only if it can.
+    func resolves(city name: String) async -> Bool {
+        let wanted = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !wanted.isEmpty else { return false }
+        return await coordinate(for: wanted) != nil
     }
 
     /// Fetches unless the last attempt was under 15 minutes ago. Any failure
@@ -104,7 +137,10 @@ final class WeatherService {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return }
             // 304: what we already show is current.
-            guard http.statusCode != 304 else { return }
+            guard http.statusCode != 304 else {
+                updatedAt = .now
+                return
+            }
             guard http.statusCode == 200 else { return }
 
             let decoder = JSONDecoder()
@@ -112,6 +148,7 @@ final class WeatherService {
             decoder.dateDecodingStrategy = .iso8601
             apply(try decoder.decode(Forecast.self, from: data))
             lastModified = http.value(forHTTPHeaderField: "Last-Modified")
+            updatedAt = .now
         } catch {
             // Offline, throttled or malformed - keep the last good values.
         }
