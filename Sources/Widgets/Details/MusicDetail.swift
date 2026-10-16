@@ -474,29 +474,33 @@ private struct Marquee: View {
     private var moves: Bool { overflow > 1 && !reduceMotion }
 
     var body: some View {
-        Group {
-            if moves {
-                Text(text)
-                    .fixedSize()
-                    .offset(x: scrolled ? -overflow : 0)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .clipped()
-            } else {
-                Text(text)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        // The truncated line sets the size, always. The moving copy is an
+        // overlay, which cannot change layout: as the view itself, its full
+        // natural width reached the panel, and a long title widened the card
+        // past its window.
+        Text(text)
+            .truncationMode(.tail)
+            .opacity(moves ? 0 : 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .overlay(alignment: .leading) {
+                if moves {
+                    Text(text)
+                        .fixedSize()
+                        .offset(x: scrolled ? -overflow : 0)
+                }
             }
-        }
-        .lineLimit(1)
-        // The natural width, measured off-screen, against the room there is.
-        .background {
-            Text(text).fixedSize().hidden()
-                .onGeometryChange(for: CGFloat.self, of: \.size.width) { textWidth = $0 }
-        }
-        .onGeometryChange(for: CGFloat.self, of: \.size.width) { boxWidth = $0 }
-        .onChange(of: moves, initial: true) { _, _ in restart() }
-        .onChange(of: overflow) { _, _ in restart() }
-        .accessibilityLabel(text)
+            .clipped()
+            .lineLimit(1)
+            // The natural width, measured off-screen, against the room there
+            // is. A background, like the overlay, has no say in the size.
+            .background {
+                Text(text).fixedSize().hidden()
+                    .onGeometryChange(for: CGFloat.self, of: \.size.width) { textWidth = $0 }
+            }
+            .onGeometryChange(for: CGFloat.self, of: \.size.width) { boxWidth = $0 }
+            .onChange(of: moves, initial: true) { _, _ in restart() }
+            .onChange(of: overflow) { _, _ in restart() }
+            .accessibilityLabel(text)
     }
 
     private func restart() {
