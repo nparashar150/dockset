@@ -21,7 +21,7 @@ struct AskDetail: View {
             MeshBackdrop(color: Color(hex: PaletteColor.indigo.hex))
         } content: {
             VStack(alignment: .leading, spacing: 12) {
-                if context.isPreview || service.hasKey {
+                if context.isPreview || service.canAsk {
                     input
                     stage
                         .frame(maxHeight: .infinity, alignment: .top)
@@ -215,20 +215,17 @@ struct AskDetail: View {
 
     // MARK: No key
 
-    /// The key is taken here, where the question was going to be typed,
-    /// rather than sending anyone off to find a Settings tab first.
+    /// Shown only when neither route exists: no key, and no Claude Code on
+    /// this Mac. The key is taken here, where the question was going to be
+    /// typed, rather than sending anyone off to find a Settings tab first.
     private var connect: some View {
         VStack(alignment: .leading, spacing: 14) {
-            TileBadge(size: 44) {
-                Image(systemName: "sparkle")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(Color.panelInk)
-            }
+            AskOrb(size: 44)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Ask Claude anything")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Color.panelInk)
-                Text("Paste an Anthropic API key to start. It is kept in your Keychain and only ever sent to Anthropic.")
+                Text("Install Claude Code and it is used automatically, or paste an Anthropic API key. A key stays in your Keychain and is only sent to Anthropic.")
                     .font(.system(size: 12))
                     .foregroundStyle(Color.panelInk.opacity(0.7))
                     .fixedSize(horizontal: false, vertical: true)
@@ -243,7 +240,10 @@ struct AskDetail: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 9)
                 .glassPane(cornerRadius: 12)
-            HStack {
+            HStack(spacing: 14) {
+                Link("Get Claude Code", destination: URL(string: "https://claude.com/claude-code")!)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.panelInk.opacity(0.75))
                 Link("Get a key", destination: URL(string: "https://console.anthropic.com/settings/keys")!)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.panelInk.opacity(0.75))
@@ -501,7 +501,7 @@ private struct AskThinking: View {
             let t = timeline.date.timeIntervalSinceReferenceDate
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 12) {
-                    orb(t)
+                    AskOrb(size: 38)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Thinking" + String(repeating: ".", count: Int(t * 2.5) % 4))
                             .font(.system(size: 14, weight: .semibold))
@@ -521,28 +521,6 @@ private struct AskThinking: View {
             }
         }
         .padding(.top, 6)
-    }
-
-    private func orb(_ t: Double) -> some View {
-        let breathe = 1 + 0.06 * sin(t * 2.4)
-        return ZStack {
-            Circle()
-                .fill(Color.panelInk.opacity(0.06))
-            Circle()
-                .strokeBorder(
-                    AngularGradient(colors: [Color.panelInk.opacity(0.05), Color.panelInk.opacity(0.85),
-                                             Color(hex: PaletteColor.indigo.hex).opacity(0.6),
-                                             Color.panelInk.opacity(0.05)],
-                                    center: .center),
-                    lineWidth: 1.6)
-                .rotationEffect(.degrees(t * 120))
-            Image(systemName: "sparkle")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.panelInk)
-                .scaleEffect(breathe)
-                .opacity(0.75 + 0.25 * sin(t * 2.4))
-        }
-        .frame(width: 38, height: 38)
     }
 
     /// A placeholder line with a band of light sweeping along it.
@@ -581,5 +559,39 @@ private struct AskDots: View {
             }
         }
         .frame(height: 10)
+    }
+}
+
+/// The sparkle inside a slowly turning ring of light, breathing: Ask's mark
+/// when it is waiting, whether for an answer or for a way to ask.
+private struct AskOrb: View {
+    var size: CGFloat
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        TimelineView(.animation(paused: reduceMotion)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            let breathe = 1 + 0.06 * sin(t * 2.4)
+            ZStack {
+                Circle()
+                    .fill(Color.panelInk.opacity(0.06))
+                Circle()
+                    .strokeBorder(
+                        AngularGradient(colors: [Color.panelInk.opacity(0.05), Color.panelInk.opacity(0.85),
+                                                 Color(hex: PaletteColor.indigo.hex).opacity(0.6),
+                                                 Color.panelInk.opacity(0.05)],
+                                        center: .center),
+                        lineWidth: 1.6)
+                    .rotationEffect(.degrees(t * 120))
+                Image(systemName: "sparkle")
+                    .font(.system(size: size * 0.4, weight: .semibold))
+                    .foregroundStyle(Color.panelInk)
+                    .scaleEffect(breathe)
+                    .opacity(0.75 + 0.25 * sin(t * 2.4))
+            }
+            .frame(width: size, height: size)
+        }
+        .accessibilityHidden(true)
     }
 }

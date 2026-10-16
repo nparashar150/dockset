@@ -6,8 +6,6 @@ struct WeatherTile: View {
     var instance: WidgetInstance
     var context: WidgetContext
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
     /// Warm card. The weather tile is the one tinted widget in the shelf, and
     /// the tint is part of how it reads at a glance.
     private static let sample = WeatherNow(temperatureC: 18,
@@ -240,10 +238,9 @@ struct WeatherTile: View {
             .foregroundStyle(WidgetStyle.primary)
             .font(.system(size: size))
             .frame(height: size)
-            // The same slow breath as the panel's, so the tile reads as live
-            // beside CPU and Now Playing. Never in the library, where nothing
-            // on the card is live.
-            .symbolEffect(.breathe, options: .repeating, isActive: !reduceMotion && !context.isPreview)
+            // Still. A repeating breath here redrew the whole glass shelf
+            // every frame, for as long as the shelf was up - a fifth of a
+            // core, measured, to make a cloud pulse.
     }
 
     /// Big figure with a lighter degree mark riding on top of it. A missing

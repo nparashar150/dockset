@@ -4,6 +4,12 @@ import Observation
 
 /// Quick questions to Claude, answered as cards.
 ///
+/// Two ways in. An Anthropic API key, kept in the Keychain, streams the answer
+/// block by block. Without one, an installed Claude Code answers instead,
+/// through the person's own sign-in: most people who would add this widget
+/// already have `claude`, and asking them for a second credential was the
+/// wall the widget stopped at.
+///
 /// One question at a time: asking again cancels the one in flight, and so
 /// does closing the panel, because an answer nobody is looking at is spend
 /// for nothing. The answer streams, and each block is handed to the panel
@@ -41,17 +47,25 @@ final class AskService {
 
     func refreshKey() { hasKey = AnthropicKey.read() != nil }
 
+    /// Whether a question can be sent at all, by either route.
+    var canAsk: Bool { hasKey || claudePath != nil }
+
     func ask(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         cancel()
         refreshKey()
-        guard let key = AnthropicKey.read() else { return }
+        let key = AnthropicKey.read()
+        guard key != nil || claudePath != nil else { return }
         question = trimmed
         title = nil
         blocks = []
         phase = .thinking
-        task = Task { await stream(trimmed, key: key) }
+        if let key {
+            task = Task { await stream(trimmed, key: key) }
+        } else if let claudePath {
+            task = Task { await answerWithClaudeCode(trimmed, path: claudePath) }
+        }
     }
 
     /// Stops the answer in flight and keeps whatever had already arrived.
@@ -220,6 +234,93 @@ final class AskService {
         case 429: "Rate limited, try again in a moment."
         case 529, 500...599: "Claude is busy right now. Try again shortly."
         default: "Couldn't get an answer (HTTP \(status))."
+        }
+    }
+
+    // MARK: Claude Code
+
+    /// One `claude -p` run with the widget's own prompt and schema.
+    ///
+    /// Stripped to the question: no tools, no MCP servers, none of the
+    /// person's settings, memory or plugins, and no saved session. Measured,
+    /// a bare `claude -p` carried a 62,000-token default prompt and cost half
+    /// a dollar to add two numbers; this costs a fraction of a cent and
+    /// answers in about three seconds. Run from a scratch directory so no
+    /// project's files are anywhere in reach.
+    private func answerWithClaudeCode(_ question: String, path: String) async {
+        guard let schema = try? JSONSerialization.data(withJSONObject: Self.schema) else { return }
+        let arguments = [
+            "-p", question,
+            "--output-format", "json",
+            "--system-prompt", Self.system,
+            "--json-schema", String(decoding: schema, as: UTF8.self),
+            "--model", "sonnet",
+            "--tools", "",
+            "--setting-sources", "",
+            "--strict-mcp-config",
+            "--no-session-persistence",
+        ]
+        do {
+            let output = try await Self.run(path, arguments)
+            guard !Task.isCancelled else { return }
+            guard let reply = try? JSONSerialization.jsonObject(with: output) as? [String: Any] else {
+                return fail("Claude Code didn't answer. Run `claude` once in Terminal to sign in.")
+            }
+            if reply["is_error"] as? Bool == true {
+                let detail = (reply["result"] as? String) ?? ""
+                return fail(detail.localizedCaseInsensitiveContains("log")
+                            ? "Claude Code isn't signed in. Run `claude` once in Terminal."
+                            : "Claude Code couldn't answer that.")
+            }
+            guard let structured = reply["structured_output"],
+                  let data = try? JSONSerialization.data(withJSONObject: structured),
+                  let answer = try? JSONDecoder().decode(AskAnswer.self, from: data) else {
+                return fail("No answer came back.")
+            }
+            title = answer.title
+            blocks = answer.blocks.filter(showable)
+            phase = blocks.isEmpty ? .failed("No answer came back.") : .done
+        } catch is CancellationError {
+            return
+        } catch {
+            fail("Couldn't start Claude Code.")
+        }
+    }
+
+    /// Runs a command to completion off the main thread and returns what it
+    /// printed. Cancelling the task terminates the process, so closing the
+    /// panel stops a question that is still being answered.
+    nonisolated private static func run(_ path: String, _ arguments: [String]) async throws -> Data {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        process.arguments = arguments
+        process.currentDirectoryURL = FileManager.default.temporaryDirectory
+        // A GUI app inherits launchd's bare PATH, and `claude` may be a
+        // script that needs node from Homebrew or a version manager.
+        var environment = ProcessInfo.processInfo.environment
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        environment["PATH"] = ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin",
+                               environment["PATH"] ?? "/usr/bin:/bin"].joined(separator: ":")
+        process.environment = environment
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+                process.terminationHandler = { _ in
+                    continuation.resume(returning: output.fileHandleForReading.readDataToEndOfFile())
+                }
+                do {
+                    try process.run()
+                } catch {
+                    process.terminationHandler = nil
+                    continuation.resume(throwing: error)
+                }
+            }
+        } onCancel: {
+            process.terminate()
         }
     }
 
