@@ -57,18 +57,18 @@ struct NetworkActivityTile: View {
         .minimumScaleFactor(0.6)
     }
 
+    /// The stock tile's dithered chart: download stippled in, upload a line
+    /// over it, both on one scale so they stay comparable.
     private var chart: some View {
-        // Both series share one scale, so the lines stay comparable.
-        let peak = max(downloadHistory.max() ?? 0, uploadHistory.max() ?? 0, 1)
+        let peak = max(downloadHistory.max() ?? 0, uploadHistory.max() ?? 0, 1024)
         return ZStack {
             if showsDownload {
-                Sparkline(values: downloadHistory, peak: peak)
-                    .stroke(Color(hex: MetricColor.netDownload), lineWidth: 1.5)
+                DitherChart(samples: downloadHistory, tint: Color(hex: MetricColor.netDownload),
+                            range: 0...peak, lineWidth: 1.25)
             }
             if showsUpload {
-                Sparkline(values: uploadHistory, peak: peak)
-                    .stroke(Color(hex: MetricColor.netUpload),
-                            style: StrokeStyle(lineWidth: 1.5, lineCap: .round, dash: [3, 2]))
+                DitherChart(samples: uploadHistory, tint: Color(hex: MetricColor.netUpload),
+                            filled: !showsDownload, range: 0...peak, lineWidth: 1.25)
             }
         }
     }

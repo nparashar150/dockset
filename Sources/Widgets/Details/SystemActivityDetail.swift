@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// System Activity said at length: one chart, a line for every reading the
-/// widget shows, over the last minute.
+/// System Activity said at length: a row per reading the widget shows, each
+/// its current figure beside its last minute as a dithered chart.
 ///
-/// It was a stack - a row and a tick meter per metric, a chart under them,
-/// chips for pressure and swap, a folder scan - and grew taller than every
-/// other panel. One chart on the card every panel shares says the same thing
-/// at a glance: where each reading is, by the legend, and whether it is on its
-/// way up, by its line.
+/// The stock panel's chart, because it was the one that read best: a line
+/// with the ground under it stippled in, rather than a smooth wash. One row
+/// per metric rather than every line on one chart, since each gets its own
+/// scale fitted to it - memory moving between 75 and 77% is invisible on a
+/// 0 to 100 axis shared with a CPU that jumps from 5 to 60.
 ///
 /// Which metrics appear is the widget's own `metrics` config, chosen per
 /// metric in Dock Settings, so the panel follows it rather than assuming the
@@ -18,20 +18,12 @@ struct SystemActivityDetail: View {
 
     var body: some View {
         // Graphite with a violet cast: a machine's insides, dark enough that
-        // the lines' own colours are the only colour in it.
+        // the charts' own colours are the only colour in it.
         DetailCard {
             MeshBackdrop(color: Color(red: 0.3, green: 0.24, blue: 0.5))
         } content: {
-            VStack(alignment: .leading, spacing: 12) {
-                legend
-                // Absolute, so a CPU idling low sits low. Lines only once
-                // there are two: fills stacked on fills turn to mud.
-                AreaHistory(series: metrics.map {
-                                AreaHistory.Series(name: $0.label, samples: samples($0), color: $0.color)
-                            },
-                            range: 0...1, length: SystemMetrics.historyLength,
-                            filled: metrics.count == 1)
-                    .frame(height: 128)
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(metrics, id: \.self) { row($0) }
                 HStack {
                     Text(span)
                     Spacer()
@@ -40,32 +32,48 @@ struct SystemActivityDetail: View {
                 .font(WidgetStyle.caption(10))
                 .foregroundStyle(Color.panelInk.opacity(0.45))
             }
+            // The card's height, shared out between the rows, so one metric
+            // gets one tall chart and four get four short ones.
+            .frame(height: DetailCard<EmptyView, EmptyView>.height - 32)
         }
     }
 
-    /// The key to the lines, and the current reading of each.
-    private var legend: some View {
-        HStack(alignment: .top, spacing: 14) {
-            ForEach(metrics, id: \.self) { metric in
-                VStack(alignment: .leading, spacing: 1) {
-                    HStack(spacing: 5) {
-                        Circle().fill(metric.color).frame(width: 7, height: 7)
-                        Text(metric.label)
-                            .font(WidgetStyle.label(11))
-                            .foregroundStyle(Color.panelInk.opacity(0.7))
-                    }
-                    Text("\(whole(value(metric)))%")
-                        .font(.system(size: 24, weight: .light))
-                        .monospacedDigit()
-                        .foregroundStyle(WidgetStyle.primary)
-                        .rollingValue(whole(value(metric)))
+    private func row(_ metric: Metric) -> some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 5) {
+                    Circle().fill(metric.color).frame(width: 7, height: 7)
+                    Text(metric.label)
+                        .font(WidgetStyle.label(11))
+                        .foregroundStyle(Color.panelInk.opacity(0.7))
                 }
-                .accessibilityElement(children: .combine)
+                Text("\(whole(value(metric)))%")
+                    .font(.system(size: 22, weight: .light))
+                    .monospacedDigit()
+                    .foregroundStyle(WidgetStyle.primary)
+                    .rollingValue(whole(value(metric)))
             }
-            Spacer(minLength: 0)
+            .frame(width: 82, alignment: .leading)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .accessibilityElement(children: .combine)
+
+            DitherChart(samples: samples(metric), tint: metric.color,
+                        range: Self.fit(samples(metric)), lineWidth: 1.5)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityHidden(true)
         }
-        .lineLimit(1)
-        .minimumScaleFactor(0.7)
+        .frame(maxHeight: .infinity)
+    }
+
+    /// The series' own range with room around it, never narrower than a
+    /// fifth of the scale, so a near-flat reading stays near-flat instead of
+    /// having its noise blown up to fill the row.
+    private static func fit(_ samples: [Double]) -> ClosedRange<Double> {
+        guard let low = samples.min(), let high = samples.max() else { return 0...1 }
+        let span = max(high - low, 0.2) * 1.4
+        let lower = max(0, min((low + high) / 2 - span / 2, 1 - span))
+        return lower ... min(1, lower + span)
     }
 
     /// Named with the span the buffer actually holds, which is under a minute

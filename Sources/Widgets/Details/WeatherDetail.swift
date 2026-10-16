@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// Weather said at length: the reading the tile leads with, the condition and
@@ -34,8 +35,6 @@ struct WeatherDetail: View {
 
     var instance: WidgetInstance
     var context: WidgetContext
-
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         // Graphite like every other panel. The tinted sky with a blurred
@@ -127,13 +126,12 @@ struct WeatherDetail: View {
             .lineLimit(1)
             .truncationMode(.tail)
             Spacer(minLength: 0)
-            Image(systemName: weather.symbolName)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(Color.panelInk)
-                .font(.system(size: 42))
-                // A slow breath, so the reading looks alive without anything
-                // in it pretending to change faster than MET publishes.
-                .symbolEffect(.breathe, options: .repeating, isActive: !reduceMotion)
+            // Still: the symbol changes when the sky does, with a replace
+            // transition, and a constant breath on top only made it look
+            // like a loading indicator.
+            WeatherGlyph(symbol: weather.symbolName)
+                .font(.system(size: 46))
+                .shadow(color: .black.opacity(0.12), radius: 6, y: 2)
                 .contentTransition(.symbolEffect(.replace))
         }
         .animation(.snappy(duration: 0.25), value: selected)
@@ -346,11 +344,9 @@ struct WeatherDetail: View {
                 .font(WidgetStyle.caption(10))
                 .foregroundStyle(lit ? WidgetStyle.primary : WidgetStyle.secondary)
                 .monospacedDigit()
-            Image(systemName: symbol)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(Color.panelInk)
-                .font(.system(size: 13))
-                .frame(height: 16)
+            WeatherGlyph(symbol: symbol)
+                .font(.system(size: 14))
+                .frame(height: 18)
             Text(degrees(celsius))
                 .font(WidgetStyle.label(11))
                 .foregroundStyle(WidgetStyle.primary)
@@ -478,5 +474,36 @@ struct WeatherDetail: View {
                         temperatureC: pair.0,
                         symbolName: pair.1)
         }
+    }
+}
+
+/// A weather symbol in Apple's own colours: a yellow sun, blue rain, a white
+/// moon. Only the cloud takes a colour from here, because multicolour leaves
+/// it to the foreground and the foreground is white ink on the dark card and
+/// near-black on the light one; a cloud wants to be cloud-coloured on both.
+///
+/// The filled variant where one exists: the outline symbols have no layers
+/// for multicolour to paint, which is why the glyph was one flat grey.
+private struct WeatherGlyph: View {
+    var symbol: String
+
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        Image(systemName: filled)
+            .symbolRenderingMode(.multicolor)
+            .foregroundStyle(scheme == .dark
+                             ? Color(white: 0.92)
+                             : Color(red: 0.6, green: 0.65, blue: 0.72))
+            // Multicolour draws clouds white whatever the foreground, which
+            // all but vanish on the light card; a tight shadow gives them an
+            // edge there.
+            .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.28), radius: 1, y: 0.5)
+    }
+
+    private var filled: String {
+        guard !symbol.hasSuffix(".fill") else { return symbol }
+        let candidate = symbol + ".fill"
+        return NSImage(systemSymbolName: candidate, accessibilityDescription: nil) == nil ? symbol : candidate
     }
 }

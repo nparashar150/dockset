@@ -14,8 +14,10 @@ import SwiftUI
 ///
 /// Only what EventKit hands back for an incomplete reminder due by tonight: a
 /// title, a due date, its list and that list's colour, and whether it is
-/// flagged high priority. Nothing is completed, created or edited here - the
-/// panel reads.
+/// flagged high priority. The everyday edits happen in place: the circle
+/// completes a reminder, a double click renames it, the cross deletes it, and
+/// the field at the foot adds one due today. Anything more - a time, notes, a
+/// list of its own - is Reminders.app's job.
 struct RemindersDetail: View {
     var instance: WidgetInstance
     var context: WidgetContext
@@ -30,6 +32,11 @@ struct RemindersDetail: View {
     /// Fetches are async and the panel can be pointed at another widget while
     /// one is in flight; only the newest is allowed to land.
     @State private var generation = 0
+    /// What is being typed into the add field.
+    @State private var draft = ""
+    /// The reminder being renamed, and its new title so far.
+    @State private var renaming: String?
+    @State private var newTitle = ""
 
     private var store: EKEventStore { ReminderStore.shared }
 
@@ -85,6 +92,8 @@ struct RemindersDetail: View {
                     if !rows.isEmpty {
                         list(overdue: overdue, today: today)
                     }
+                    Spacer(minLength: 0)
+                    addField
                 } else {
                     permission
                 }
@@ -171,16 +180,36 @@ struct RemindersDetail: View {
 
     private func row(_ item: DueReminder) -> some View {
         HStack(alignment: .top, spacing: 9) {
-            Circle()
-                .fill(tints[item.listID] ?? Self.fallbackTint)
-                .frame(width: 7, height: 7)
-                // Aligned to the cap of the title, not the middle of the row.
-                .padding(.top, 4)
+            // Reminders.app's own control: an empty ring in the list's colour,
+            // clicked to complete.
+            Button {
+                complete(item)
+            } label: {
+                Image(systemName: "circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(tints[item.listID] ?? Self.fallbackTint)
+            }
+            .buttonStyle(.plain)
+            .help("Mark as completed")
+            .accessibilityLabel("Complete \(item.title)")
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
-                    Text(item.title)
-                        .font(WidgetStyle.label(13))
-                        .foregroundStyle(WidgetStyle.primary)
+                    if renaming == item.id {
+                        TextField("Title", text: $newTitle)
+                            .textFieldStyle(.plain)
+                            .font(WidgetStyle.label(13))
+                            .onSubmit { rename(item) }
+                            .onExitCommand { renaming = nil }
+                    } else {
+                        Text(item.title)
+                            .font(WidgetStyle.label(13))
+                            .foregroundStyle(WidgetStyle.primary)
+                            .onTapGesture(count: 2) {
+                                newTitle = item.title
+                                renaming = item.id
+                            }
+                            .help("Double-click to rename")
+                    }
                     // Reminders.app's own flag, and the only ranking EventKit
                     // gives that a due-date sort throws away.
                     if item.isHighPriority {
@@ -194,6 +223,16 @@ struct RemindersDetail: View {
                     .foregroundStyle(WidgetStyle.secondary)
             }
             Spacer(minLength: 0)
+            Button {
+                delete(item)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(Color.panelInk.opacity(0.35))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 1)
+            .help("Delete reminder")
+            .accessibilityLabel("Delete \(item.title)")
         }
         // Truncated rather than wrapped: the panel is sized once when it
         // opens, so a second line would be clipped by the window.
@@ -216,6 +255,84 @@ struct RemindersDetail: View {
             ? ""
             : item.due.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated)) + " "
         return item.list.isEmpty ? day + when : "\(day)\(when), \(item.list)"
+    }
+
+    // MARK: Editing
+
+    /// Adds a reminder due today, all day, to the list the widget shows or the
+    /// account's default list.
+    private var addField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "plus.circle.fill")
+                .foregroundStyle(Self.fallbackTint)
+            TextField("New reminder", text: $draft)
+                .textFieldStyle(.plain)
+                .font(WidgetStyle.label(13))
+                .onSubmit(add)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .glassPane(cornerRadius: 10)
+    }
+
+    private func add() {
+        let title = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !context.isPreview, !title.isEmpty else { return }
+        let lists = store.calendars(for: .reminder)
+        guard let list = lists.first(where: { $0.title == listFilter })
+                ?? store.defaultCalendarForNewReminders() ?? lists.first else { return }
+        let reminder = EKReminder(eventStore: store)
+        reminder.title = title
+        reminder.calendar = list
+        // A day with no time: due today, overdue only once today is over.
+        reminder.dueDateComponents = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+        guard save(reminder) else { return }
+        draft = ""
+    }
+
+    private func complete(_ item: DueReminder) {
+        guard let reminder = reminder(item) else { return }
+        reminder.isCompleted = true
+        save(reminder)
+    }
+
+    private func rename(_ item: DueReminder) {
+        defer { renaming = nil }
+        let title = newTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, title != item.title, let reminder = reminder(item) else { return }
+        reminder.title = title
+        save(reminder)
+    }
+
+    /// Deleted outright, as in Reminders.app; it is in Recently Deleted
+    /// there for thirty days.
+    private func delete(_ item: DueReminder) {
+        guard let reminder = reminder(item) else { return }
+        do {
+            try store.remove(reminder, commit: true)
+            load()
+        } catch {
+            NSSound.beep()
+        }
+    }
+
+    private func reminder(_ item: DueReminder) -> EKReminder? {
+        guard !context.isPreview else { return nil }
+        return store.calendarItem(withIdentifier: item.id) as? EKReminder
+    }
+
+    /// A failed save beeps rather than failing quietly: a read-only list, or
+    /// an account that went offline.
+    @discardableResult
+    private func save(_ reminder: EKReminder) -> Bool {
+        do {
+            try store.save(reminder, commit: true)
+            load()
+            return true
+        } catch {
+            NSSound.beep()
+            return false
+        }
     }
 
     // MARK: No access
@@ -306,6 +423,9 @@ struct RemindersDetail: View {
             rows = fetched.sorted {
                 $0.due == $1.due ? $0.title < $1.title : $0.due < $1.due
             }
+            // The list can grow or shrink the panel, which is otherwise sized
+            // once as it opens.
+            WidgetDetailWindow.shared.relayout()
         }
     }
 

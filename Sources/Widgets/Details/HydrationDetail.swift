@@ -35,9 +35,9 @@ struct HydrationDetail: View {
         return DetailCard {
             ZStack(alignment: .bottom) {
                 MeshBackdrop(color: accent)
-                Water(level: left / duration,
-                      phase: now.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 4) / 4,
-                      colour: accent)
+                // Never quite full: a surface at the card's top edge read as
+                // a glitch rather than a glass that was just topped up.
+                Water(level: min(0.85, left / duration), colour: accent)
             }
         } content: {
             VStack(alignment: .leading, spacing: 14) {
@@ -105,7 +105,7 @@ struct HydrationDetail: View {
                         .foregroundStyle(WidgetStyle.primary)
                         .monospacedDigit()
                 }
-                TickMeter(fraction: min(1, total / goal))
+                progress(min(1, total / goal))
                 week(now: now, goal: goal)
             } else {
                 Text(drinks.count == 1 ? "1 drink today" : "\(drinks.count) drinks today")
@@ -150,20 +150,47 @@ struct HydrationDetail: View {
         .glassPane(cornerRadius: 10)
     }
 
-    /// Seven days, a bar each, today last, with the goal as the top.
+    /// Today against the goal as one smooth bar.
+    private func progress(_ fraction: Double) -> some View {
+        Capsule()
+            .fill(Color.panelInk.opacity(0.1))
+            .overlay(alignment: .leading) {
+                GeometryReader { geo in
+                    Capsule()
+                        .fill(accent)
+                        .frame(width: max(6, geo.size.width * fraction))
+                }
+            }
+            .frame(height: 6)
+            .animation(.snappy(duration: 0.35), value: fraction)
+    }
+
+    /// Seven days, a column each with its weekday under it, today last and
+    /// the goal as the top. An empty day keeps its column as a faint track,
+    /// so the week reads as a week rather than a row of dashes.
     private func week(now: Date, goal: Double) -> some View {
         let totals = log.totals(endingOn: now)
-        return HStack(alignment: .bottom, spacing: 4) {
+        let calendar = Calendar.current
+        return HStack(alignment: .bottom, spacing: 6) {
             ForEach(totals.indices, id: \.self) { index in
                 let fraction = min(1, totals[index] / goal)
-                VStack(spacing: 0) {
-                    Spacer(minLength: 0)
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(index == totals.count - 1 ? accent : accent.opacity(0.55))
-                        .frame(height: max(2, 28 * fraction))
+                let day = calendar.date(byAdding: .day, value: index - (totals.count - 1), to: now) ?? now
+                VStack(spacing: 4) {
+                    Capsule()
+                        .fill(Color.panelInk.opacity(0.08))
+                        .frame(width: 8, height: 34)
+                        .overlay(alignment: .bottom) {
+                            if fraction > 0 {
+                                Capsule()
+                                    .fill(index == totals.count - 1 ? accent : accent.opacity(0.6))
+                                    .frame(width: 8, height: max(8, 34 * fraction))
+                            }
+                        }
+                    Text(day.formatted(.dateTime.weekday(.narrow)))
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(Color.panelInk.opacity(index == totals.count - 1 ? 0.8 : 0.45))
                 }
-                .frame(maxWidth: .infinity, maxHeight: 28)
-                .background(RoundedRectangle(cornerRadius: 2).fill(Color.panelInk.opacity(0.06)))
+                .frame(maxWidth: .infinity)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -306,9 +333,11 @@ struct HydrationDetail: View {
 /// Water filling the card to `level`, its surface a slow double wave.
 private struct Water: View {
     var level: Double
-    /// 0…1 through one swell, so the surface moves with the panel's tick.
-    var phase: Double
     var colour: Color
+
+    /// Fixed: the surface used to move with the panel's one-second tick,
+    /// which drew it as a jump every second rather than a swell.
+    private let phase = 0.0
 
     @Environment(\.colorScheme) private var scheme
 

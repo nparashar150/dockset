@@ -265,7 +265,11 @@ struct StocksDetail: View {
             }
             if quotes.contains(where: { $0?.stale == true }) { staleNote }
         }
+        // The card's full height, shared out between the rows: three short
+        // rows at the top of a tall card left a third of it empty, and the
+        // room is better spent on taller day lines.
         .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(height: DetailCard<EmptyView, EmptyView>.height - 32, alignment: .top)
     }
 
     /// A ticker as a watchlist app shows one: who it is on the left, how
@@ -292,7 +296,7 @@ struct StocksDetail: View {
             .frame(width: 92, alignment: .leading)
 
             DayLine(samples: quote.map(series) ?? [], tint: accent(quote))
-                .frame(height: 26)
+                .frame(minHeight: 26, maxHeight: 48)
                 .frame(maxWidth: .infinity)
 
             VStack(alignment: .trailing, spacing: 3) {
@@ -312,6 +316,7 @@ struct StocksDetail: View {
         .minimumScaleFactor(0.75)
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
+        .frame(maxHeight: .infinity)
         .glassPane(cornerRadius: 10)
         .contentShape(.rect)
         .onTapGesture {

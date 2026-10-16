@@ -158,21 +158,25 @@ struct NetworkDetail: View {
     ///
     /// Floored at 1 KB/s so an idle minute stays pinned to the bottom of the
     /// frame: without a floor the scale collapses onto the noise and a few
-    /// stray bytes are drawn as a mountain range. Download and upload are two
-    /// filled curves on that one scale, each in its own colour.
+    /// stray bytes are drawn as a mountain range.
     private var history: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(window >= NetworkMetrics.historyLength ? "Last minute" : "Last \(window)s")
                 .font(WidgetStyle.caption(10))
                 .foregroundStyle(Color.panelInk.opacity(0.45))
-            AreaHistory(series: [
-                            showsDownload ? AreaHistory.Series(name: "Down", samples: downloadHistory,
-                                                               color: Color(hex: MetricColor.netDownload)) : nil,
-                            showsUpload ? AreaHistory.Series(name: "Up", samples: uploadHistory,
-                                                             color: Color(hex: MetricColor.netUpload)) : nil,
-                        ].compactMap(\.self),
-                        range: scale, length: NetworkMetrics.historyLength)
-                .frame(height: 96)
+            // The stock panel's dithered chart: download filled, upload as a
+            // line over it on the same scale, so the two can be compared.
+            ZStack {
+                if showsDownload {
+                    DitherChart(samples: downloadHistory, tint: Color(hex: MetricColor.netDownload),
+                                range: scale)
+                }
+                if showsUpload {
+                    DitherChart(samples: uploadHistory, tint: Color(hex: MetricColor.netUpload),
+                                filled: !showsDownload, range: scale)
+                }
+            }
+            .frame(height: 80)
         }
     }
 

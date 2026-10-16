@@ -1,4 +1,3 @@
-import Charts
 import SwiftUI
 
 /// The card every panel is drawn on.
@@ -282,69 +281,5 @@ struct TickMeter: View {
             .animation(.smooth(duration: 0.4), value: lit)
         }
         .frame(height: height)
-    }
-}
-
-/// The last minute as smooth filled lines, one per series, on faint rules.
-///
-/// It was a row of fine bars, one per sample, on the reasoning that a line
-/// through a one-second sampler is either jagged or smoothed into something
-/// that did not happen. Monotone interpolation answers both: it curves
-/// between the samples without overshooting any of them, so every peak
-/// drawn is a peak that was measured.
-///
-/// Several series share one scale so they can be read against each other,
-/// and each is filled to the floor with its own colour fading out, which is
-/// what lets two of them overlap without one hiding the other.
-struct AreaHistory: View {
-    struct Series: Identifiable {
-        var name: String
-        var samples: [Double]
-        var color: Color
-        var id: String { name }
-    }
-
-    var series: [Series]
-    var range: ClosedRange<Double>
-    /// How many samples a full buffer holds. A buffer still filling is drawn
-    /// against the right edge, the way the minute will look once it is full.
-    var length: Int
-    /// Lines alone when false, for several series where fills stacked on
-    /// fills would muddy every colour.
-    var filled = true
-
-    var body: some View {
-        Chart {
-            ForEach(series) { line in
-                let offset = length - line.samples.count
-                ForEach(Array(line.samples.enumerated()), id: \.offset) { index, value in
-                    let x = Double(offset + index)
-                    let y = min(max(value, range.lowerBound), range.upperBound)
-                    if filled {
-                        AreaMark(x: .value("Second", x), yStart: .value("Floor", range.lowerBound),
-                                 yEnd: .value(line.name, y), series: .value("Series", line.name))
-                            .foregroundStyle(LinearGradient(colors: [line.color.opacity(0.32),
-                                                                     line.color.opacity(0.02)],
-                                                            startPoint: .top, endPoint: .bottom))
-                            .interpolationMethod(.monotone)
-                    }
-                    LineMark(x: .value("Second", x), y: .value(line.name, y),
-                             series: .value("Series", line.name))
-                        .foregroundStyle(line.color)
-                        .lineStyle(StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
-                        .interpolationMethod(.monotone)
-                }
-            }
-        }
-        .chartXScale(domain: 0 ... Double(max(length - 1, 1)))
-        .chartYScale(domain: range)
-        .chartXAxis(.hidden)
-        .chartYAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
-                AxisGridLine().foregroundStyle(Color.panelInk.opacity(0.08))
-            }
-        }
-        .chartLegend(.hidden)
-        .accessibilityHidden(true)
     }
 }

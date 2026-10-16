@@ -81,12 +81,15 @@ struct MusicDetail: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// Everything on the card is on a picture or on the source's colour, both
-    /// darkened, so the ink is fixed white rather than following the system:
-    /// a semantic colour would go dark in a light appearance and disappear.
-    private let ink = Color.white
-    private let subInk = Color.white.opacity(0.75)
-    private let trackInk = Color.white.opacity(0.3)
+    /// Everything on the card is on a picture, so the ink is chosen against
+    /// what the card does to that picture rather than left to the system: in
+    /// the dark it is darkened and the ink is white, in the light it is
+    /// blurred under a white wash and the ink is near-black.
+    @Environment(\.colorScheme) private var scheme
+    private var light: Bool { scheme == .light }
+    private var ink: Color { light ? Color(white: 0.1) : .white }
+    private var subInk: Color { ink.opacity(light ? 0.65 : 0.75) }
+    private var trackInk: Color { ink.opacity(light ? 0.18 : 0.3) }
 
     // MARK: Card
 
@@ -131,7 +134,7 @@ struct MusicDetail: View {
         .clipShape(.rect(cornerRadius: Self.corner, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Self.corner, style: .continuous)
-                .strokeBorder(.white.opacity(0.1), lineWidth: 0.5)
+                .strokeBorder(ink.opacity(0.1), lineWidth: 0.5)
         }
         .padding(-Self.bleed)
     }
@@ -146,6 +149,11 @@ struct MusicDetail: View {
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fill)
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                // In the light the picture becomes the card's colour rather
+                // than its subject: blurred, it tints the white wash without
+                // putting busy detail under dark text.
+                .blur(radius: light ? 28 : 0, opaque: true)
+                .saturation(light ? 1.3 : 1)
                 .clipped()
                 .accessibilityLabel("Artwork")
         } else if let tint {
@@ -160,7 +168,20 @@ struct MusicDetail: View {
     /// Dark enough under the controls to read on any picture, darker still
     /// under the title and scrubber, and light at the top so the picture is
     /// still the picture.
+    @ViewBuilder
     private var scrim: some View {
+        if light {
+            LinearGradient(stops: [
+                .init(color: .white.opacity(0.45), location: 0),
+                .init(color: .white.opacity(0.6), location: 0.5),
+                .init(color: .white.opacity(0.82), location: 1),
+            ], startPoint: .top, endPoint: .bottom)
+        } else {
+            darkScrim
+        }
+    }
+
+    private var darkScrim: some View {
         ZStack {
             Color.black.opacity(0.22)
             LinearGradient(stops: [
@@ -193,7 +214,7 @@ struct MusicDetail: View {
                 .foregroundStyle(subInk)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .shadow(color: .black.opacity(0.3), radius: 4, y: 1)
+        .shadow(color: .black.opacity(light ? 0 : 0.3), radius: 4, y: 1)
     }
 
     // MARK: Scrubber

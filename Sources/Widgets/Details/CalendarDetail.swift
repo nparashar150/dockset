@@ -129,11 +129,9 @@ struct CalendarDetail: View {
 
         if timed.isEmpty, allDay.isEmpty {
             Text("Nothing scheduled today.")
-                .font(WidgetStyle.label(13))
-                .foregroundStyle(Color.panelInk.opacity(0.8))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .glassPane()
+                .font(WidgetStyle.caption(12))
+                .foregroundStyle(Color.panelInk.opacity(0.6))
+            MonthGrid(day: day, accent: Self.accent)
         } else {
             // Three rows at most, so a busy day fits the card every panel
             // shares; the rest are counted under them, and Calendar has them.
@@ -205,25 +203,34 @@ struct CalendarDetail: View {
 
     // MARK: No access
 
+    /// The month, which needs no permission, with one line under it asking
+    /// for what does. The panel was a sentence and a button on an empty
+    /// card, which read as broken rather than as waiting to be let in.
     private var permission: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(access == .notDetermined
-                 ? "Docket has not been given access to your calendar."
-                 : "Calendar access is off for Docket.")
-                .font(WidgetStyle.caption(12))
-                .foregroundStyle(Color.panelInk.opacity(0.8))
-                .fixedSize(horizontal: false, vertical: true)
-            // Once the answer is no, asking again returns it unchanged with no
-            // prompt on screen, so the only button worth drawing is the one
-            // that goes where the answer can be changed.
-            if access == .notDetermined {
-                action("Allow Access") { request() }
-            } else {
-                action("Open Settings") { openPrivacySettings() }
+        VStack(alignment: .leading, spacing: 12) {
+            MonthGrid(day: day, accent: Self.accent)
+            HStack(spacing: 10) {
+                Text(access == .notDetermined
+                     ? "Allow access to see today's events."
+                     : "Calendar access is off.")
+                    .font(WidgetStyle.caption(12))
+                    .foregroundStyle(Color.panelInk.opacity(0.7))
+                Spacer(minLength: 8)
+                // Once the answer is no, asking again returns it unchanged
+                // with no prompt on screen, so the only button worth drawing
+                // is the one that goes where the answer can be changed.
+                if access == .notDetermined {
+                    action("Allow") { request() }
+                } else {
+                    action("Open Settings") { openPrivacySettings() }
+                }
             }
+            .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    private static let accent = Color(red: 0.86, green: 0.22, blue: 0.24)
 
     private func action(_ title: String, run: @escaping () -> Void) -> some View {
         Button {
@@ -233,8 +240,8 @@ struct CalendarDetail: View {
             Text(title)
                 .font(WidgetStyle.label(13))
                 .foregroundStyle(Color.panelInk)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
                 .background(Capsule().fill(Color.panelInk.opacity(0.14)))
                 .contentShape(Capsule())
         }
@@ -283,6 +290,9 @@ struct CalendarDetail: View {
     /// The consent prompt, and the only thing that raises it, running solely
     /// because the user clicked for it.
     private func request() {
+        // An accessory app that is not frontmost can have the consent prompt
+        // come up behind everything, or not at all. Brought forward for it.
+        NSApp.activate(ignoringOtherApps: true)
         Task { @MainActor in
             // A store made here rather than the shared one: the request is an
             // async call out of the main actor, and the shared store is
@@ -396,5 +406,74 @@ private struct CalendarSource: Identifiable, Hashable {
             return Color(hex: WidgetCatalog.accentHex(.calendar) ?? PaletteColor.orange.hex)
         }
         return Color(nsColor: color)
+    }
+}
+
+/// This month as a grid of days, today ringed in the calendar's red.
+///
+/// Needs nothing from EventKit, which is why it is what the panel shows while
+/// it has no access, and on a day with nothing in it.
+private struct MonthGrid: View {
+    var day: Date
+    var accent: Color
+
+    private let calendar = Calendar.current
+
+    var body: some View {
+        let weeks = self.weeks
+        Grid(horizontalSpacing: 0, verticalSpacing: 2) {
+            GridRow {
+                ForEach(symbols, id: \.self) { symbol in
+                    Text(symbol)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.panelInk.opacity(0.4))
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            ForEach(weeks.indices, id: \.self) { week in
+                GridRow {
+                    ForEach(0 ..< 7, id: \.self) { column in
+                        cell(weeks[week][column])
+                    }
+                }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(day.formatted(.dateTime.month(.wide).year()))
+    }
+
+    @ViewBuilder
+    private func cell(_ date: Date?) -> some View {
+        if let date {
+            let today = calendar.isDate(date, inSameDayAs: day)
+            Text(date.formatted(.dateTime.day()))
+                .font(.system(size: 11, weight: today ? .bold : .regular))
+                .monospacedDigit()
+                .foregroundStyle(today ? .white : Color.panelInk.opacity(0.8))
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(today ? accent : .clear))
+                .frame(maxWidth: .infinity)
+        } else {
+            Color.clear.frame(height: 20)
+        }
+    }
+
+    /// Weekday initials starting on the user's first weekday.
+    private var symbols: [String] {
+        let all = calendar.veryShortStandaloneWeekdaySymbols
+        let first = calendar.firstWeekday - 1
+        return Array(all[first...] + all[..<first])
+    }
+
+    /// The month in rows of seven, with blanks before the first and after the
+    /// last day.
+    private var weeks: [[Date?]] {
+        guard let interval = calendar.dateInterval(of: .month, for: day),
+              let days = calendar.range(of: .day, in: .month, for: day) else { return [] }
+        let lead = (calendar.component(.weekday, from: interval.start) - calendar.firstWeekday + 7) % 7
+        var cells: [Date?] = Array(repeating: nil, count: lead)
+        cells += days.compactMap { calendar.date(byAdding: .day, value: $0 - 1, to: interval.start) }
+        cells += Array(repeating: nil, count: (7 - cells.count % 7) % 7)
+        return stride(from: 0, to: cells.count, by: 7).map { Array(cells[$0 ..< $0 + 7]) }
     }
 }
