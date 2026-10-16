@@ -50,7 +50,10 @@ final class AskService {
     /// Whether a question can be sent at all, by either route.
     var canAsk: Bool { hasKey || claudePath != nil }
 
-    func ask(_ text: String) {
+    /// `context` is facts the question may be about - the agents running on
+    /// this Mac - put ahead of it in the same message. The question alone is
+    /// what is shown and kept.
+    func ask(_ text: String, context: String? = nil) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         cancel()
@@ -61,10 +64,11 @@ final class AskService {
         title = nil
         blocks = []
         phase = .thinking
+        let message = context.map { "\($0)\n\nQuestion: \(trimmed)" } ?? trimmed
         if let key {
-            task = Task { await stream(trimmed, key: key) }
+            task = Task { await stream(message, key: key) }
         } else if let claudePath {
-            task = Task { await answerWithClaudeCode(trimmed, path: claudePath) }
+            task = Task { await answerWithClaudeCode(message, path: claudePath) }
         }
     }
 
@@ -100,7 +104,10 @@ final class AskService {
     inline Markdown. Keep the title under six words. Add a `handoff` block \
     only when the request needs real work in files, code or a multi-step task \
     on this Mac; its `prompt` must be a complete, self-contained instruction \
-    for a coding agent, and its `text` one short line saying what it will do.
+    for a coding agent, and its `text` one short line saying what it will do. \
+    A message may begin with a list of the coding agents running on this Mac, \
+    read from it moments ago; answer questions about them from that list, by \
+    project, and never claim you cannot see them.
     """
 
     private static let schema: [String: Any] = {
