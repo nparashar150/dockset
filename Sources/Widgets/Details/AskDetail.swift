@@ -215,7 +215,7 @@ struct AskDetail: View {
 
     // MARK: No key
 
-    /// Shown only when neither route exists: no key, and no Claude Code on
+    /// Shown only when neither route exists: no key, and no `claude` CLI on
     /// this Mac. The key is taken here, where the question was going to be
     /// typed, rather than sending anyone off to find a Settings tab first.
     private var connect: some View {
@@ -225,7 +225,7 @@ struct AskDetail: View {
                 Text("Ask Claude anything")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(Color.panelInk)
-                Text("Install Claude Code and it is used automatically, or paste an Anthropic API key. A key stays in your Keychain and is only sent to Anthropic.")
+                Text("Install the claude CLI and it is used automatically, or paste an Anthropic API key. A key stays in your Keychain and is only sent to Anthropic.")
                     .font(.system(size: 12))
                     .foregroundStyle(Color.panelInk.opacity(0.7))
                     .fixedSize(horizontal: false, vertical: true)
@@ -241,7 +241,7 @@ struct AskDetail: View {
                 .padding(.vertical, 9)
                 .glassPane(cornerRadius: 12)
             HStack(spacing: 14) {
-                Link("Get Claude Code", destination: URL(string: "https://claude.com/claude-code")!)
+                Link("Get the claude CLI", destination: URL(string: "https://claude.com/claude-code")!)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.panelInk.opacity(0.75))
                 Link("Get a key", destination: URL(string: "https://console.anthropic.com/settings/keys")!)
@@ -453,7 +453,7 @@ private struct AskBlockView: View {
                 Image(systemName: "terminal")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(Color.panelInk)
-                Text("Continue in Claude Code")
+                Text("Continue in Terminal")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.panelInk)
             }

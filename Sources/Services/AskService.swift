@@ -5,7 +5,7 @@ import Observation
 /// Quick questions to Claude, answered as cards.
 ///
 /// Two ways in. An Anthropic API key, kept in the Keychain, streams the answer
-/// block by block. Without one, an installed Claude Code answers instead,
+/// block by block. Without one, an installed `claude` CLI answers instead,
 /// through the person's own sign-in: most people who would add this widget
 /// already have `claude`, and asking them for a second credential was the
 /// wall the widget stopped at.
@@ -237,7 +237,7 @@ final class AskService {
         }
     }
 
-    // MARK: Claude Code
+    // MARK: claude CLI
 
     /// One `claude -p` run with the widget's own prompt and schema.
     ///
@@ -264,13 +264,13 @@ final class AskService {
             let output = try await Self.run(path, arguments)
             guard !Task.isCancelled else { return }
             guard let reply = try? JSONSerialization.jsonObject(with: output) as? [String: Any] else {
-                return fail("Claude Code didn't answer. Run `claude` once in Terminal to sign in.")
+                return fail("The claude CLI didn't answer. Run `claude` once in Terminal to sign in.")
             }
             if reply["is_error"] as? Bool == true {
                 let detail = (reply["result"] as? String) ?? ""
                 return fail(detail.localizedCaseInsensitiveContains("log")
-                            ? "Claude Code isn't signed in. Run `claude` once in Terminal."
-                            : "Claude Code couldn't answer that.")
+                            ? "The claude CLI isn't signed in. Run `claude` once in Terminal."
+                            : "Claude couldn't answer that.")
             }
             guard let structured = reply["structured_output"],
                   let data = try? JSONSerialization.data(withJSONObject: structured),
@@ -283,7 +283,7 @@ final class AskService {
         } catch is CancellationError {
             return
         } catch {
-            fail("Couldn't start Claude Code.")
+            fail("Couldn't start the claude CLI.")
         }
     }
 
