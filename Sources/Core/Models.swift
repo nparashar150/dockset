@@ -762,7 +762,16 @@ public struct MacOSDockSettings: Codable, Hashable, Sendable {
 
 public struct MenuBarSettings: Codable, Hashable, Sendable {
     public var showIcon: Bool = true
-    public var label: MenuBarLabelMode = .custom
+
+    /// Icon only, because the menu bar is not this app's to spend.
+    ///
+    /// This defaulted to `.custom`, which prints the active custom profile's
+    /// name beside the icon. The profile a first run seeds is called
+    /// "Everyday", so every new install put the word "Everyday" in the menu
+    /// bar, next to an icon, meaning nothing to anybody who had not yet
+    /// opened the profile list. The name is worth showing when somebody
+    /// juggles profiles and asks for it; it is not worth showing by default.
+    public var label: MenuBarLabelMode = .none
 
     /// Decodes field by field, so an unknown or missing key is a default and
     /// not a thrown error.
@@ -776,7 +785,7 @@ public struct MenuBarSettings: Codable, Hashable, Sendable {
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         showIcon = try c.decodeIfPresent(Bool.self, forKey: .showIcon) ?? true
-        label = try c.decodeIfPresent(MenuBarLabelMode.self, forKey: .label) ?? .custom
+        label = try c.decodeIfPresent(MenuBarLabelMode.self, forKey: .label) ?? .none
     }
 
     public init() {}
