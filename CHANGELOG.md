@@ -3,6 +3,21 @@
 The 0.1.0 entry was written by hand. Everything after it is generated from the
 commits on `main`, which is why the voice changes partway down.
 
+## [0.1.10](https://github.com/nparashar150/dockset/compare/v0.1.9...v0.1.10) (2026-10-17)
+
+
+### Features
+
+* Ask lists the coding agents running on this Mac ([#150](https://github.com/nparashar150/dockset/issues/150)) ([e817638](https://github.com/nparashar150/dockset/commit/e817638cd7a9a1d23b2c1051156b91d2e2346818))
+* richer widget panels, Ask, light and dark panels, layout hotkeys ([#146](https://github.com/nparashar150/dockset/issues/146)) ([ad977fa](https://github.com/nparashar150/dockset/commit/ad977fa2c96cc4b77f09171fc4c3e903a060e65a))
+
+
+### Bug Fixes
+
+* a long Now Playing title no longer widens the panel past its window ([#148](https://github.com/nparashar150/dockset/issues/148)) ([c1450e9](https://github.com/nparashar150/dockset/commit/c1450e9098b6ddc3d33086d5b83095fb0a1a4ec5))
+* text fields in panels take Select All, Copy, Paste and Undo ([#149](https://github.com/nparashar150/dockset/issues/149)) ([47195ff](https://github.com/nparashar150/dockset/commit/47195ff2914f17fe452bbee20dcf53879299ec28))
+* the menu bar shows the icon alone by default ([#151](https://github.com/nparashar150/dockset/issues/151)) ([b151522](https://github.com/nparashar150/dockset/commit/b151522646f11f598c2764137d82f49f85e61f85))
+
 ## [0.1.9](https://github.com/nparashar150/dockset/compare/v0.1.8...v0.1.9) (2026-10-01)
 
 
