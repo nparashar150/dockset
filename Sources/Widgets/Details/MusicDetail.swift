@@ -98,7 +98,68 @@ struct MusicDetail: View {
     private static let bleed: CGFloat = 10
     private static let corner: CGFloat = 14
 
+    @ViewBuilder
     private func card(_ track: Playing) -> some View {
+        if light { lightCard(track) } else { darkCard(track) }
+    }
+
+    /// The light appearance's card: the picture as a picture, sharp and
+    /// rounded beside the title, on the same light card every other panel
+    /// uses. Washing the full-bleed artwork out to white made a grey-pink
+    /// smear of any thumbnail and lost the one thing worth seeing.
+    private func lightCard(_ track: Playing) -> some View {
+        let icon = track.icon ?? AppCatalog.shared.icon(forBundleID: track.sourceBundleID)
+        return DetailCard {
+            MeshBackdrop(color: track.tint.map { Self.colour($0.top) } ?? .purple)
+        } content: {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    artwork(track.artwork, icon: icon)
+                    titles(track)
+                }
+                transport(track)
+                    .frame(maxWidth: .infinity)
+                if track.duration > 0 || !track.isBrowser {
+                    scrubber(track)
+                }
+            }
+            .frame(maxHeight: .infinity)
+        }
+    }
+
+    /// The cover, or the source's icon on a tile when there is none.
+    private func artwork(_ image: NSImage?, icon: NSImage?) -> some View {
+        Group {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fill)
+            } else if let icon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .padding(14)
+                    .background(Color.panelInk.opacity(0.06))
+            } else {
+                Image(systemName: "music.note")
+                    .font(.system(size: 24))
+                    .foregroundStyle(subInk)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.panelInk.opacity(0.06))
+            }
+        }
+        .frame(width: 64, height: 64)
+        .clipShape(.rect(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.panelInk.opacity(0.08), lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
+    }
+
+    private func darkCard(_ track: Playing) -> some View {
         let icon = track.icon ?? AppCatalog.shared.icon(forBundleID: track.sourceBundleID)
         return ZStack {
             backdrop(track.artwork, tint: track.tint)
@@ -149,11 +210,6 @@ struct MusicDetail: View {
                 .interpolation(.high)
                 .aspectRatio(contentMode: .fill)
                 .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-                // In the light the picture becomes the card's colour rather
-                // than its subject: blurred, it tints the white wash without
-                // putting busy detail under dark text.
-                .blur(radius: light ? 28 : 0, opaque: true)
-                .saturation(light ? 1.3 : 1)
                 .clipped()
                 .accessibilityLabel("Artwork")
         } else if let tint {
@@ -168,18 +224,7 @@ struct MusicDetail: View {
     /// Dark enough under the controls to read on any picture, darker still
     /// under the title and scrubber, and light at the top so the picture is
     /// still the picture.
-    @ViewBuilder
-    private var scrim: some View {
-        if light {
-            LinearGradient(stops: [
-                .init(color: .white.opacity(0.45), location: 0),
-                .init(color: .white.opacity(0.6), location: 0.5),
-                .init(color: .white.opacity(0.82), location: 1),
-            ], startPoint: .top, endPoint: .bottom)
-        } else {
-            darkScrim
-        }
-    }
+    private var scrim: some View { darkScrim }
 
     private var darkScrim: some View {
         ZStack {

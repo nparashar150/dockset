@@ -846,7 +846,10 @@ struct DockShelfView: View {
     }
 
     private func open(_ entry: Entry) {
-        panelLog.debug("tap \(entry.label, privacy: .public)")
+        panelLog.notice("""
+            tap \(entry.label, privacy: .public) shelfActiveSpace=\(shelfWindow?.isOnActiveSpace ?? false) \
+            shelfVisible=\(shelfWindow?.isVisible ?? false)
+            """)
         // The Dock drops its label the moment you click, and here it would
         // otherwise sit over whatever the click just opened.
         TooltipWindow.shared.hide()

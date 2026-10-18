@@ -103,6 +103,12 @@ final class GroupWindow {
 
         panel.setFrame(CGRect(origin: CGPoint(x: placed.x - room, y: placed.y - room),
                               size: size), display: true)
+        // See WidgetDetailWindow: a close's fade still in flight would
+        // otherwise carry the reopened sheet back to zero opacity.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            panel.animator().alphaValue = 1
+        }
         panel.alphaValue = 1
         panel.orderFrontRegardless()
         // Needed for the name field; the shelf itself still never takes key,

@@ -167,22 +167,27 @@ struct AskDetail: View {
 
     // MARK: Agents
 
+    /// One row per session, working first, then the most recently active.
+    /// The row says what it is about: what it was last asked, and the start
+    /// of its answer. Click to bring its tab forward.
     private var agentList: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(agentHeadline)
                         .font(.system(size: 9, weight: .semibold))
                         .tracking(0.6)
                         .foregroundStyle(Color.panelInk.opacity(0.5))
                     Spacer()
-                    Button("What are they doing?") { ask("What is each of my agents doing, and which need me?") }
+                    Button("What needs me?") { ask("Which of my agents need me, and what is each one doing?") }
                         .buttonStyle(.plain)
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(Color.panelInk.opacity(0.7))
                 }
-                ForEach(scanner.byProject, id: \.project) { group in
-                    projectRow(group.project, directory: group.directory, agents: group.agents)
+                .padding(.bottom, 6)
+                ForEach(scanner.sorted) { agent in
+                    agentRow(agent)
+                    if sendingTo == agent { sendField(agent) }
                 }
             }
         }
@@ -196,58 +201,73 @@ struct AskDetail: View {
         return working > 0 ? "\(base) · \(working) WORKING" : base
     }
 
-    private func projectRow(_ project: String, directory: String?, agents: [RunningAgent]) -> some View {
-        let seen = directory.flatMap { scanner.activity[$0] }
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(project)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.panelInk)
-                Spacer(minLength: 8)
-                if let seen {
-                    Text(AgentScanner.age(seen.updated) + " ago")
-                        .font(.system(size: 10))
-                        .foregroundStyle(Color.panelInk.opacity(0.5))
-                        .monospacedDigit()
-                }
-            }
-            if let prompt = seen?.lastPrompt {
-                Text("\u{201C}\(prompt)\u{201D}")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.panelInk.opacity(0.65))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            // One chip per session: which app it is in, how long it has run,
-            // whether it is busy. Clicked, it comes forward.
-            FlowChips(agents: agents, sendingTo: $sendingTo)
-            if let target = sendingTo, agents.contains(target) {
-                HStack(spacing: 8) {
-                    Image(systemName: "paperplane")
+    private func agentRow(_ agent: RunningAgent) -> some View {
+        Button { AgentScanner.focus(agent) } label: {
+            HStack(alignment: .top, spacing: 9) {
+                Circle()
+                    .fill(agent.working ? Color.green : Color.panelInk.opacity(0.2))
+                    .frame(width: 7, height: 7)
+                    .padding(.top, 5)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(agent.headline)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.panelInk)
+                        Spacer(minLength: 6)
+                        Text(agent.working ? "now" : AgentScanner.age(agent.updated ?? agent.started))
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.panelInk.opacity(0.45))
+                            .monospacedDigit()
+                    }
+                    Text([agent.project, agent.lastReply].compactMap(\.self).joined(separator: " · "))
                         .font(.system(size: 11))
-                        .foregroundStyle(Color.panelInk.opacity(0.6))
-                    TextField("", text: $message,
-                              prompt: Text("Type into this \(target.name) session…")
-                                .foregroundStyle(Color.panelInk.opacity(0.4)))
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 12))
-                        .onSubmit {
-                            let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
-                            guard !text.isEmpty else { return }
-                            AgentScanner.send(text, to: target)
-                            message = ""
-                            sendingTo = nil
-                        }
-                        .onExitCommand { sendingTo = nil }
+                        .foregroundStyle(Color.panelInk.opacity(0.55))
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
-                .glassPane(cornerRadius: 9)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .contentShape(.rect)
+        }
+        .buttonStyle(AgentRowStyle())
+        .help("\(agent.name) in \(agent.host)\n\(agent.directory ?? "")\n" +
+              (agent.canSend ? "Click to bring forward, right-click to send a message" : "Click to bring forward"))
+        .contextMenu {
+            Button("Bring Forward") { AgentScanner.focus(agent) }
+            if agent.canSend { Button("Send a Message…") { sendingTo = agent } }
+            if let directory = agent.directory {
+                Button("Copy Path") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(directory, forType: .string)
+                }
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassPane(cornerRadius: 10)
+    }
+
+    private func sendField(_ target: RunningAgent) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "paperplane")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.panelInk.opacity(0.6))
+            TextField("", text: $message,
+                      prompt: Text("Type into this session…").foregroundStyle(Color.panelInk.opacity(0.4)))
+                .textFieldStyle(.plain)
+                .font(.system(size: 12))
+                .onSubmit {
+                    let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else { return }
+                    AgentScanner.send(text, to: target)
+                    message = ""
+                    sendingTo = nil
+                }
+                .onExitCommand { sendingTo = nil }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .glassPane(cornerRadius: 9)
+        .padding(.leading, 24)
+        .padding(.bottom, 4)
     }
 
     @ViewBuilder
@@ -678,99 +698,25 @@ private struct AskDots: View {
     }
 }
 
-/// A project's sessions as chips that wrap: the app each runs in, how long
-/// it has run, and a dot that is lit while it works. Click to bring it
-/// forward; the context menu sends it a message where its terminal allows.
-private struct FlowChips: View {
-    var agents: [RunningAgent]
-    @Binding var sendingTo: RunningAgent?
-
-    var body: some View {
-        WrapLayout(spacing: 6) {
-            ForEach(agents) { agent in
-                Button { AgentScanner.focus(agent) } label: { chip(agent) }
-                    .buttonStyle(.plain)
-                    .help(help(agent))
-                    .contextMenu {
-                        Button("Bring Forward") { AgentScanner.focus(agent) }
-                        if agent.canSend {
-                            Button("Send a Message…") { sendingTo = agent }
-                        }
-                        if let directory = agent.directory {
-                            Button("Copy Path") {
-                                NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(directory, forType: .string)
-                            }
-                        }
-                    }
-            }
-        }
+/// A row that lights on hover and dips when pressed, with no chrome at rest:
+/// a list of sessions reads as a list, not a stack of cards.
+private struct AgentRowStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Hovering(pressed: configuration.isPressed) { configuration.label }
     }
 
-    private func chip(_ agent: RunningAgent) -> some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(agent.working ? Color.green : Color.panelInk.opacity(0.25))
-                .frame(width: 6, height: 6)
-            if let bundle = agent.hostBundleID,
-               let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) {
-                Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                    .resizable()
-                    .frame(width: 13, height: 13)
-            }
-            Text(agent.kind == .app ? agent.name : "\(agent.name) · \(AgentScanner.age(agent.started))")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.panelInk.opacity(0.85))
-                .monospacedDigit()
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Capsule().fill(Color.panelInk.opacity(0.08)))
-        .contentShape(Capsule())
-    }
+    private struct Hovering<Label: View>: View {
+        var pressed: Bool
+        @ViewBuilder var label: () -> Label
+        @State private var hovered = false
 
-    private func help(_ agent: RunningAgent) -> String {
-        var parts = ["\(agent.name) in \(agent.host)"]
-        if let directory = agent.directory { parts.append(directory) }
-        parts.append(agent.working ? "Working" : "Idle")
-        parts.append(agent.canSend ? "Click to bring forward, right-click to send a message" : "Click to bring forward")
-        return parts.joined(separator: "\n")
-    }
-}
-
-/// Rows that wrap, left to right.
-private struct WrapLayout: Layout {
-    var spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? .infinity
-        var x: CGFloat = 0, y: CGFloat = 0, row: CGFloat = 0, widest: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > 0, x + size.width > width {
-                y += row + spacing
-                x = 0
-                row = 0
-            }
-            x += size.width + spacing
-            row = max(row, size.height)
-            widest = max(widest, x - spacing)
-        }
-        return CGSize(width: proposal.width ?? widest, height: y + row)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, row: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > bounds.minX, x + size.width > bounds.maxX {
-                y += row + spacing
-                x = bounds.minX
-                row = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            row = max(row, size.height)
+        var body: some View {
+            label()
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color.panelInk.opacity(pressed ? 0.1 : hovered ? 0.06 : 0)))
+                .onHover { hovered = $0 }
+                .animation(.smooth(duration: 0.15), value: hovered)
         }
     }
 }
