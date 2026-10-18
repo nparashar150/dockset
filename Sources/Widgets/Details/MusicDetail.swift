@@ -81,15 +81,12 @@ struct MusicDetail: View {
         .frame(maxWidth: .infinity)
     }
 
-    /// Everything on the card is on a picture, so the ink is chosen against
-    /// what the card does to that picture rather than left to the system: in
-    /// the dark it is darkened and the ink is white, in the light it is
-    /// blurred under a white wash and the ink is near-black.
-    @Environment(\.colorScheme) private var scheme
-    private var light: Bool { scheme == .light }
-    private var ink: Color { light ? Color(white: 0.1) : .white }
-    private var subInk: Color { ink.opacity(light ? 0.65 : 0.75) }
-    private var trackInk: Color { ink.opacity(light ? 0.18 : 0.3) }
+    /// Everything on the card is on a picture or on the source's colour, both
+    /// darkened, so the ink is fixed white rather than following the system:
+    /// a semantic colour would go dark in a light appearance and disappear.
+    private let ink = Color.white
+    private let subInk = Color.white.opacity(0.75)
+    private let trackInk = Color.white.opacity(0.3)
 
     // MARK: Card
 
@@ -98,68 +95,10 @@ struct MusicDetail: View {
     private static let bleed: CGFloat = 10
     private static let corner: CGFloat = 14
 
-    @ViewBuilder
+    /// The artwork as the card, in both appearances: the picture is what
+    /// the panel is for, and a light version either washed it out or shrank
+    /// it to a thumbnail.
     private func card(_ track: Playing) -> some View {
-        if light { lightCard(track) } else { darkCard(track) }
-    }
-
-    /// The light appearance's card: the picture as a picture, sharp and
-    /// rounded beside the title, on the same light card every other panel
-    /// uses. Washing the full-bleed artwork out to white made a grey-pink
-    /// smear of any thumbnail and lost the one thing worth seeing.
-    private func lightCard(_ track: Playing) -> some View {
-        let icon = track.icon ?? AppCatalog.shared.icon(forBundleID: track.sourceBundleID)
-        return DetailCard {
-            MeshBackdrop(color: track.tint.map { Self.colour($0.top) } ?? .purple)
-        } content: {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 12) {
-                    artwork(track.artwork, icon: icon)
-                    titles(track)
-                }
-                transport(track)
-                    .frame(maxWidth: .infinity)
-                if track.duration > 0 || !track.isBrowser {
-                    scrubber(track)
-                }
-            }
-            .frame(maxHeight: .infinity)
-        }
-    }
-
-    /// The cover, or the source's icon on a tile when there is none.
-    private func artwork(_ image: NSImage?, icon: NSImage?) -> some View {
-        Group {
-            if let image {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fill)
-            } else if let icon {
-                Image(nsImage: icon)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fit)
-                    .padding(14)
-                    .background(Color.panelInk.opacity(0.06))
-            } else {
-                Image(systemName: "music.note")
-                    .font(.system(size: 24))
-                    .foregroundStyle(subInk)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.panelInk.opacity(0.06))
-            }
-        }
-        .frame(width: 64, height: 64)
-        .clipShape(.rect(cornerRadius: 12, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.panelInk.opacity(0.08), lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.12), radius: 8, y: 3)
-    }
-
-    private func darkCard(_ track: Playing) -> some View {
         let icon = track.icon ?? AppCatalog.shared.icon(forBundleID: track.sourceBundleID)
         return ZStack {
             backdrop(track.artwork, tint: track.tint)
@@ -224,9 +163,7 @@ struct MusicDetail: View {
     /// Dark enough under the controls to read on any picture, darker still
     /// under the title and scrubber, and light at the top so the picture is
     /// still the picture.
-    private var scrim: some View { darkScrim }
-
-    private var darkScrim: some View {
+    private var scrim: some View {
         ZStack {
             Color.black.opacity(0.22)
             LinearGradient(stops: [
@@ -259,7 +196,7 @@ struct MusicDetail: View {
                 .foregroundStyle(subInk)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .shadow(color: .black.opacity(light ? 0 : 0.3), radius: 4, y: 1)
+        .shadow(color: .black.opacity(0.3), radius: 4, y: 1)
     }
 
     // MARK: Scrubber

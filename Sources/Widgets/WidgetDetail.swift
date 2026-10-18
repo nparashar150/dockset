@@ -319,9 +319,7 @@ struct WidgetDetailChrome: View {
             // Room for the tail on whichever side the shelf is.
             .padding(tailSide, PanelShape.arrowDepth)
             .frame(width: WidgetDetail.width(instance.kind), alignment: .leading)
-            // The artwork's colour as the frame belongs to the dark card it
-            // was taken for; around the light one it was a dark band.
-            .background(surface(scheme == .dark ? WidgetDetailBody.ground(instance, context) : nil))
+            .background(surface(WidgetDetailBody.ground(instance, context)))
             .fixedSize()
             // Rises a little and fades in. It used to scale up out of the
             // tile, which is an iOS sheet's entrance; a panel on this
