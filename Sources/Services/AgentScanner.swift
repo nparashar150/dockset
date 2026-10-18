@@ -21,8 +21,18 @@ struct RunningAgent: Identifiable, Hashable, Sendable {
     /// The terminal device, for finding its tab, e.g. "/dev/ttys012".
     var tty: String?
     var started: Date
-    /// Using the processor over the last few seconds.
+    /// Busy: from the agent's own status where it publishes one, from its
+    /// processor use otherwise.
     var working: Bool
+    /// What this session was last asked, its last answer, and when it last
+    /// changed: read from its own log, for agents that keep one.
+    var lastPrompt: String?
+    var lastReply: String?
+    var updated: Date?
+
+    /// The line that says what the session is: what it was asked, or where
+    /// it is when there is nothing to go on.
+    var headline: String { lastPrompt ?? (kind == .app ? name : "\(name) in \(project)") }
 
     var project: String {
         directory.map { URL(fileURLWithPath: $0).lastPathComponent } ?? name
@@ -34,12 +44,6 @@ struct RunningAgent: Identifiable, Hashable, Sendable {
     var canSend: Bool {
         tty != nil && (hostBundleID == AgentScanner.terminal || hostBundleID == AgentScanner.iTerm)
     }
-}
-
-/// What a project's newest session last said, read from the agent's own log.
-struct AgentActivity: Hashable, Sendable {
-    var updated: Date
-    var lastPrompt: String?
 }
 
 /// Finds the coding agents running on this Mac, and where.
@@ -57,8 +61,6 @@ final class AgentScanner {
     nonisolated static let iTerm = "com.googlecode.iterm2"
 
     private(set) var agents: [RunningAgent] = []
-    /// Keyed by directory.
-    private(set) var activity: [String: AgentActivity] = [:]
 
     @ObservationIgnored private var lastCPU: [pid_t: (time: UInt64, at: Date)] = [:]
     @ObservationIgnored private var scanning = false
@@ -67,12 +69,12 @@ final class AgentScanner {
 
     var working: Int { agents.filter(\.working).count }
 
-    /// Projects in the order their newest agent started, each with its agents.
-    var byProject: [(project: String, directory: String?, agents: [RunningAgent])] {
-        let groups = Dictionary(grouping: agents) { $0.directory ?? "app:\($0.name)" }
-        return groups.values
-            .map { (project: $0[0].project, directory: $0[0].directory, agents: $0.sorted { $0.started > $1.started }) }
-            .sorted { ($0.agents.contains(where: \.working) ? 0 : 1, $0.project) < ($1.agents.contains(where: \.working) ? 0 : 1, $1.project) }
+    /// Working first, then the most recently active.
+    var sorted: [RunningAgent] {
+        agents.sorted {
+            if $0.working != $1.working { return $0.working }
+            return ($0.updated ?? $0.started) > ($1.updated ?? $1.started)
+        }
     }
 
     func refresh() async {
@@ -83,9 +85,6 @@ final class AgentScanner {
         let found = await Task.detached(priority: .utility) { Self.scan(previous: previous) }.value
         lastCPU = found.cpu
         agents = found.agents + Self.apps()
-        activity = await Task.detached(priority: .utility) { [agents] in
-            Self.readActivity(for: Set(agents.compactMap { $0.kind == .cli && $0.name == "Claude" ? $0.directory : nil }))
-        }.value
     }
 
     /// A line per agent, for a question asked about them.
@@ -94,10 +93,9 @@ final class AgentScanner {
         let lines = agents.map { agent -> String in
             var parts = ["\(agent.name) in \(agent.directory ?? "its own app")", "in \(agent.host)",
                          "running \(Self.age(agent.started))", agent.working ? "working" : "idle"]
-            if let directory = agent.directory, let seen = activity[directory] {
-                parts.append("project last active \(Self.age(seen.updated)) ago")
-                if let prompt = seen.lastPrompt { parts.append("last asked: \"\(prompt.prefix(140))\"") }
-            }
+            if let updated = agent.updated { parts.append("last active \(Self.age(updated)) ago") }
+            if let prompt = agent.lastPrompt { parts.append("last asked: \"\(prompt.prefix(140))\"") }
+            if let reply = agent.lastReply { parts.append("last replied: \"\(reply.prefix(140))\"") }
             return "- " + parts.joined(separator: ", ")
         }
         return "Coding agents running on this Mac right now:\n" + lines.joined(separator: "\n")
@@ -169,14 +167,16 @@ final class AgentScanner {
                 working = elapsed > 0 && Double(total - before.time) / 1e9 / elapsed > 0.03
             }
             let host = hostApp(of: candidate.pid, parents: parents)
-            agents.append(RunningAgent(
+            var agent = RunningAgent(
                 id: candidate.pid, kind: .cli, name: candidate.name,
                 directory: workingDirectory(candidate.pid),
                 host: host?.localizedName ?? "a terminal",
                 hostBundleID: host?.bundleIdentifier, hostPID: host?.processIdentifier,
                 tty: ttyPath(candidate.info),
                 started: Date(timeIntervalSince1970: TimeInterval(candidate.info.pbi_start_tvsec)),
-                working: working))
+                working: working)
+            if candidate.name == "Claude" { readClaudeSession(into: &agent) }
+            agents.append(agent)
         }
         return (agents.sorted { $0.started > $1.started }, cpu)
     }
@@ -300,46 +300,71 @@ final class AgentScanner {
         }
     }
 
-    // MARK: Activity
+    // MARK: Session logs
 
-    /// For each project, the newest session log and the last thing typed into
-    /// it. Read from the tail of the file only, which is where the newest
-    /// lines are, so a long session costs the same as a short one.
-    nonisolated private static func readActivity(for directories: Set<String>) -> [String: AgentActivity] {
-        let root = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".claude/projects")
-        var result: [String: AgentActivity] = [:]
-        for directory in directories {
-            let folder = root.appending(path: directory.replacingOccurrences(of: "/", with: "-")
-                .replacingOccurrences(of: ".", with: "-"))
-            let logs = (try? FileManager.default.contentsOfDirectory(
-                at: folder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-            let dated = logs.filter { $0.pathExtension == "jsonl" }.compactMap { url in
-                (try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
-                    .map { (url, $0) }
-            }
-            guard let newest = dated.max(by: { $0.1 < $1.1 }) else { continue }
-            result[directory] = AgentActivity(updated: newest.1, lastPrompt: lastPrompt(in: newest.0))
+    /// Claude publishes a small file per running session, named by process:
+    /// its session, folder and a status it keeps current itself. That gives
+    /// this session its own log rather than whichever is newest in the
+    /// folder, and "busy" from the agent rather than guessed from the
+    /// processor.
+    nonisolated private static func readClaudeSession(into agent: inout RunningAgent) {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let meta = home.appending(path: ".claude/sessions/\(agent.id).json")
+        guard let data = try? Data(contentsOf: meta),
+              let session = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        if let status = session["status"] as? String { agent.working = status != "idle" }
+        if let updated = session["updatedAt"] as? Double {
+            agent.updated = Date(timeIntervalSince1970: updated / 1000)
         }
-        return result
+        guard let id = session["sessionId"] as? String,
+              let directory = (session["cwd"] as? String) ?? agent.directory else { return }
+        let folder = directory.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ".", with: "-")
+        let log = home.appending(path: ".claude/projects/\(folder)/\(id).jsonl")
+        let (prompt, reply) = lastTurn(in: log)
+        agent.lastPrompt = prompt
+        agent.lastReply = reply
     }
 
-    nonisolated private static func lastPrompt(in url: URL) -> String? {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+    /// The last thing typed and the last thing answered, from the tail of a
+    /// session log only, so a long session costs the same as a short one.
+    nonisolated private static func lastTurn(in url: URL) -> (prompt: String?, reply: String?) {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return (nil, nil) }
         defer { try? handle.close() }
         let end = (try? handle.seekToEnd()) ?? 0
-        try? handle.seek(toOffset: end > 262_144 ? end - 262_144 : 0)
+        try? handle.seek(toOffset: end > 524_288 ? end - 524_288 : 0)
         let text = String(decoding: handle.readDataToEndOfFile(), as: UTF8.self)
-        for line in text.split(separator: "\n").reversed() {
-            guard line.contains("\"type\":\"user\""),
+        var prompt: String?
+        var reply: String?
+        for line in text.split(separator: "\n").reversed() where prompt == nil {
+            let isUser = line.contains("\"type\":\"user\"")
+            let isAssistant = line.contains("\"type\":\"assistant\"")
+            guard isUser || (isAssistant && reply == nil),
                   let object = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-                  let message = object["message"] as? [String: Any],
-                  let content = message["content"] as? String else { continue }
-            let prompt = content.trimmingCharacters(in: .whitespacesAndNewlines)
-            // Commands and tool output are logged as user turns too.
-            guard !prompt.isEmpty, !prompt.hasPrefix("<") else { continue }
-            return prompt.replacingOccurrences(of: "\n", with: " ")
+                  let message = object["message"] as? [String: Any] else { continue }
+            if isUser {
+                // Plain text, or parts when the message carried an image;
+                // a tool's result comes back as parts with no text in them.
+                let content = (message["content"] as? String)
+                    ?? (message["content"] as? [[String: Any]])?
+                        .compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
+                        .joined(separator: " ")
+                    ?? ""
+                let clean = oneLine(content)
+                // Commands and tool output are logged as user turns too.
+                if !clean.isEmpty, !clean.hasPrefix("<") { prompt = clean }
+            } else if isAssistant, let parts = message["content"] as? [[String: Any]] {
+                let said = parts.compactMap { $0["type"] as? String == "text" ? $0["text"] as? String : nil }
+                    .joined(separator: " ")
+                let clean = oneLine(said)
+                if !clean.isEmpty { reply = clean }
+            }
         }
-        return nil
+        return (prompt, reply)
+    }
+
+    nonisolated private static func oneLine(_ text: String) -> String {
+        text.split(whereSeparator: \.isNewline).joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
     }
 
     // MARK: Actions

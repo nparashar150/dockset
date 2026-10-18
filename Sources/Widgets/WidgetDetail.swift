@@ -2,7 +2,9 @@ import AppKit
 import OSLog
 import SwiftUI
 
-/// `log stream --level debug --predicate 'subsystem == "com.namanparashar.plinth"'`
+/// At notice level, so macOS keeps it: read back with
+/// `log show --last 1h --predicate 'subsystem == "com.namanparashar.plinth"'`.
+/// Temporary, for a report that a panel opens only on the main Space.
 let panelLog = Logger(subsystem: "com.namanparashar.plinth", category: "panel")
 
 /// A widget's detail panel: what opens when its tile is clicked.
@@ -48,7 +50,7 @@ final class WidgetDetailWindow {
 
     func toggle(_ instance: WidgetInstance, context: WidgetContext,
                 anchor: CGPoint, edge: DockPosition, host: CGRect) {
-        panelLog.debug("""
+        panelLog.notice("""
             toggle \(instance.kind.rawValue, privacy: .public) open=\(self.openWidgetID == instance.id) \
             anchor=\(anchor.debugDescription, privacy: .public) host=\(host.debugDescription, privacy: .public)
             """)
@@ -112,7 +114,7 @@ final class WidgetDetailWindow {
 
     func close() {
         guard openWidgetID != nil else { return }
-        panelLog.debug("close")
+        panelLog.notice("close")
         openWidgetID = nil
         shown = nil
         stopWatching()
@@ -213,9 +215,18 @@ final class WidgetDetailWindow {
             arrowOffset: offset, maxBodyHeight: maxBodyHeight)
 
         panel.setFrame(CGRect(origin: placed, size: size), display: true)
+        // A close's fade may still be running: it animates the window to
+        // zero, and setting the value alone did not stop it, so a panel
+        // opened during another's fade-out finished invisible - "open",
+        // placed, ordered front and drawn at zero opacity. A zero-length
+        // animation of its own replaces the one in flight.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            panel.animator().alphaValue = 1
+        }
         panel.alphaValue = 1
         panel.orderFrontRegardless()
-        panelLog.debug("""
+        panelLog.notice("""
             placed \(instance.kind.rawValue, privacy: .public) frame=\(panel.frame.debugDescription, privacy: .public) \
             visible=\(panel.isVisible) activeSpace=\(panel.isOnActiveSpace) \
             screen=\(panel.screen?.localizedName ?? "none", privacy: .public)

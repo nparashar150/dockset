@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var shelf: DockPanelController!
     private var menuBar: MenuBarController!
     private var observation: NSObjectProtocol?
+    private var spaceObservation: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let state = AppState()
@@ -111,6 +112,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // or re-hid the shelf when the Dock changed, so "Match the macOS Dock"
         // only matched it at launch.
         SystemDockSettings.shared.onChange = { [weak self] in self?.shelf.refresh() }
+
+        // Temporary: which Space is active when, for the panel report.
+        spaceObservation = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main
+        ) { _ in
+            panelLog.notice("space changed")
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
