@@ -7,8 +7,10 @@ import SwiftUI
 /// The playing browser video, live, for the Now Playing panel.
 ///
 /// Captures only the video's rectangle of its browser window with
-/// ScreenCaptureKit and hands each frame to a display layer, which draws it
-/// without a copy. A window is captured even while other windows cover it;
+/// ScreenCaptureKit and sets each frame's surface as a layer's contents,
+/// which draws it without a copy. Not `AVSampleBufferDisplayLayer`: it took
+/// the frames and showed nothing, holding them for a presentation clock the
+/// capture never runs. A window is captured even while other windows cover it;
 /// one that is minimised has nothing to capture.
 ///
 /// Runs only while asked: the panel starts it on a click and stops it when it
@@ -22,16 +24,22 @@ final class VideoMirror {
         case off, starting, live
         /// Screen Recording was refused.
         case denied
+        /// The browser window is on another desktop. macOS draws only the
+        /// active Space, so a window elsewhere hands over blank frames.
+        case elsewhere
         case unavailable(String)
     }
 
-    private(set) var state: State = .off
+    private(set) var state: State = .off {
+        didSet { if state != oldValue { panelLog.notice("video \(String(describing: self.state), privacy: .public)") } }
+    }
     /// Width over height of the picture being shown.
     private(set) var aspect: CGFloat = 16 / 9
 
-    let layer: AVSampleBufferDisplayLayer = {
-        let layer = AVSampleBufferDisplayLayer()
-        layer.videoGravity = .resizeAspectFill
+    let layer: CALayer = {
+        let layer = CALayer()
+        layer.contentsGravity = .resizeAspectFill
+        layer.masksToBounds = true
         return layer
     }()
 
@@ -60,7 +68,7 @@ final class VideoMirror {
         window = nil
         region = nil
         Task { try? await stream?.stopCapture() }
-        layer.sampleBufferRenderer.flush(removingDisplayedImage: true, completionHandler: nil)
+        layer.contents = nil
         state = .off
     }
 
@@ -102,6 +110,20 @@ final class VideoMirror {
             state = .unavailable("The video's window isn't on screen.")
             return
         }
+        // Checked every second, so going to that desktop and back brings
+        // the picture without another click.
+        guard target.isOnScreen else {
+            if state != .elsewhere {
+                try? await stream?.stopCapture()
+                stream = nil
+                output = nil
+                window = nil
+                region = nil
+                layer.contents = nil
+                state = .elsewhere
+            }
+            return
+        }
 
         let source = CGRect(x: rect.minX - target.frame.minX, y: rect.minY - target.frame.minY,
                             width: rect.width, height: rect.height)
@@ -129,8 +151,12 @@ final class VideoMirror {
         }
 
         try? await stream?.stopCapture()
-        let output = Output(renderer: layer.sampleBufferRenderer) { [weak self] in
-            Task { @MainActor in if self?.state != .off { self?.state = .live } }
+        let output = Output { [weak self] surface in
+            Task { @MainActor in
+                guard let self, self.state != .off else { return }
+                self.layer.contents = surface.value
+                if self.state != .live { self.state = .live }
+            }
         }
         let filter = SCContentFilter(desktopIndependentWindow: target)
         let fresh = SCStream(filter: filter, configuration: configuration, delegate: nil)
@@ -146,18 +172,20 @@ final class VideoMirror {
         region = source
     }
 
-    /// Receives frames on its own queue and passes the complete ones straight
-    /// to the layer's renderer, which is safe to feed from any thread.
+    /// A frame's surface, carried to the main thread to be shown.
+    struct Surface: @unchecked Sendable {
+        let value: IOSurface
+    }
+
+    /// Receives frames on its own queue and passes each complete one's surface
+    /// on to be shown.
     private final class Output: NSObject, SCStreamOutput, @unchecked Sendable {
         static let queue = DispatchQueue(label: "com.namanparashar.plinth.video", qos: .userInteractive)
 
-        private let renderer: AVSampleBufferVideoRenderer
-        private let firstFrame: () -> Void
-        private var sawFrame = false
+        private let deliver: (Surface) -> Void
 
-        init(renderer: AVSampleBufferVideoRenderer, firstFrame: @escaping () -> Void) {
-            self.renderer = renderer
-            self.firstFrame = firstFrame
+        init(deliver: @escaping (Surface) -> Void) {
+            self.deliver = deliver
         }
 
         func stream(_ stream: SCStream, didOutputSampleBuffer buffer: CMSampleBuffer, of type: SCStreamOutputType) {
@@ -165,22 +193,11 @@ final class VideoMirror {
                   let attachments = CMSampleBufferGetSampleAttachmentsArray(buffer, createIfNecessary: false)
                     as? [[SCStreamFrameInfo: Any]],
                   let raw = attachments.first?[.status] as? Int,
-                  SCFrameStatus(rawValue: raw) == .complete else { return }
-            // Shown the moment it arrives rather than against a clock the
-            // layer would otherwise wait on.
-            if let mutable = CMSampleBufferGetSampleAttachmentsArray(buffer, createIfNecessary: true),
-               CFArrayGetCount(mutable) > 0 {
-                let dictionary = unsafeBitCast(CFArrayGetValueAtIndex(mutable, 0), to: CFMutableDictionary.self)
-                CFDictionarySetValue(dictionary,
-                                     Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
-                                     Unmanaged.passUnretained(kCFBooleanTrue).toOpaque())
-            }
-            if renderer.status == .failed { renderer.flush() }
-            renderer.enqueue(buffer)
-            if !sawFrame {
-                sawFrame = true
-                firstFrame()
-            }
+                  SCFrameStatus(rawValue: raw) == .complete,
+                  let pixels = buffer.imageBuffer,
+                  let surface = CVPixelBufferGetIOSurface(pixels)?.takeUnretainedValue()
+            else { return }
+            deliver(Surface(value: surface))
         }
     }
 }

@@ -115,6 +115,9 @@ struct MusicDetail: View {
     /// Video in a browser can be watched live in the card. See `VideoMirror`.
     private func toggleLive() {
         guard !context.isPreview else { return }
+        panelLog.notice("""
+            watch tapped on=\(mirror.isOn) tab=\(BrowserMedia.shared.playingTab.map { "\($0.browser.rawValue) w\($0.window) t\($0.tab)" } ?? "none", privacy: .public)
+            """)
         if mirror.isOn {
             mirror.stop()
         } else if let tab = BrowserMedia.shared.playingTab {
@@ -148,8 +151,14 @@ struct MusicDetail: View {
         case .starting:
             ProgressView().controlSize(.small).tint(.white)
         case .denied:
-            statusLine("Allow Screen Recording for Docket to watch here.") {
+            statusLine("Allow Screen Recording for Docket, then reopen it, to watch here.",
+                       button: "Open Settings") {
                 NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+            }
+        case .elsewhere:
+            statusLine("Playing on another desktop. It shows here once you are on the same one.",
+                       button: "Go there") {
+                if let tab = BrowserMedia.shared.playingTab { Task { await BrowserBridge.reveal(tab) } }
             }
         case .unavailable(let reason):
             statusLine(reason, action: nil)
@@ -158,14 +167,14 @@ struct MusicDetail: View {
         }
     }
 
-    private func statusLine(_ text: String, action: (() -> Void)?) -> some View {
+    private func statusLine(_ text: String, button: String = "", action: (() -> Void)?) -> some View {
         VStack(spacing: 8) {
             Text(text)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(ink)
                 .multilineTextAlignment(.center)
             if let action {
-                Button("Open Settings", action: action)
+                Button(button, action: action)
                     .buttonStyle(.plain)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(ink)
