@@ -125,13 +125,13 @@ struct MusicDetail: View {
         }
     }
 
-    private func liveButton(_ live: Bool) -> some View {
+    private func liveButton(on: Bool, showing: Bool) -> some View {
         Button(action: toggleLive) {
             HStack(spacing: 4) {
-                if live {
+                if showing {
                     Circle().fill(Color.red).frame(width: 6, height: 6)
                 }
-                Text(live ? "Live" : "Watch")
+                Text(showing ? "Live" : on ? "Stop" : "Watch")
                     .font(.system(size: 11, weight: .semibold))
             }
             .foregroundStyle(ink)
@@ -141,61 +141,65 @@ struct MusicDetail: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .help(live ? "Back to the artwork" : "Watch the video here, live")
+        .help(on ? "Back to the artwork" : "Watch the video here, live")
     }
 
-    /// Said over the picture while it starts or when it cannot.
+    /// Why the picture is not live, under the top row, with what to do
+    /// about it beside: a pill, so it never sits over the controls.
     @ViewBuilder
     private var liveStatus: some View {
         switch mirror.state {
-        case .starting:
-            ProgressView().controlSize(.small).tint(.white)
-        case .denied:
-            statusLine("Allow Screen Recording for Docket, then reopen it, to watch here.",
-                       button: "Open Settings") {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
-            }
         case .elsewhere:
-            statusLine("Playing on another desktop. It shows here once you are on the same one.",
-                       button: "Go there") {
+            statusPill("On another desktop", button: "Go there") {
                 if let tab = BrowserMedia.shared.playingTab { Task { await BrowserBridge.reveal(tab) } }
             }
+        case .denied:
+            statusPill("Needs Screen Recording", button: "Settings") {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+            }
         case .unavailable(let reason):
-            statusLine(reason, action: nil)
-        case .off, .live:
+            statusPill(reason, button: nil, action: nil)
+        case .off, .starting, .live:
             EmptyView()
         }
     }
 
-    private func statusLine(_ text: String, button: String = "", action: (() -> Void)?) -> some View {
-        VStack(spacing: 8) {
+    private func statusPill(_ text: String, button: String?, action: (() -> Void)?) -> some View {
+        HStack(spacing: 8) {
             Text(text)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(ink)
-                .multilineTextAlignment(.center)
-            if let action {
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(subInk)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+            if let button, let action {
                 Button(button, action: action)
                     .buttonStyle(.plain)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(ink)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(.white.opacity(0.18)))
             }
         }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black.opacity(0.4))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Capsule().fill(.black.opacity(0.45)))
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .transition(.opacity)
     }
 
     private func card(_ track: Playing) -> some View {
         let icon = track.icon ?? AppCatalog.shared.icon(forBundleID: track.sourceBundleID)
         let live = track.isBrowser && mirror.isOn
+        // The picture is swapped only while there is video to show; any
+        // other state keeps the artwork and says why in a pill instead.
+        let showing = live && (mirror.state == .live || mirror.state == .starting)
         return ZStack {
             Group {
-                if live {
+                if showing {
                     VideoMirrorView()
-                        .overlay { liveStatus }
+                        .overlay {
+                            if mirror.state == .starting {
+                                ProgressView().controlSize(.small).tint(.white)
+                            }
+                        }
                 } else {
                     backdrop(track.artwork, tint: track.tint)
                 }
@@ -219,8 +223,9 @@ struct MusicDetail: View {
                             .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
                     }
                     Spacer()
-                    if track.isBrowser { liveButton(live) }
+                    if track.isBrowser { liveButton(on: live, showing: showing) }
                 }
+                if live { liveStatus.padding(.top, 8) }
                 Spacer(minLength: 8)
                 transport(track)
                 Spacer(minLength: 8)
