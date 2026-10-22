@@ -70,7 +70,8 @@ final class GroupWindow {
                       iconSide: CGFloat,
                       open: @escaping (DockItem) -> Void,
                       remove: @escaping (DockItem) -> Void,
-                      rename: @escaping (String) -> Void) {
+                      rename: @escaping (String) -> Void,
+                      rebuilt: Bool = false) {
         let panel = existingOrNew()
         // A fresh token per open: the hosting view is reused, so its state
         // survives being ordered out and would otherwise start already-shown.
@@ -111,6 +112,16 @@ final class GroupWindow {
         }
         panel.alphaValue = 1
         panel.orderFrontRegardless()
+        // See WidgetDetailWindow.place: a window macOS has pinned to another
+        // Space is replaced by a fresh one, which lands on this Space.
+        if !panel.isOnActiveSpace, !rebuilt {
+            self.panel?.orderOut(nil)
+            self.panel = nil
+            hosting = nil
+            openGroupID = nil
+            return show(group, anchor: anchor, edge: edge, iconSide: iconSide,
+                        open: open, remove: remove, rename: rename, rebuilt: true)
+        }
         // Needed for the name field; the shelf itself still never takes key,
         // so clicking a tile does not pull focus out of the user's app.
         panel.makeKey()

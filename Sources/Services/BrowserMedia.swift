@@ -173,6 +173,9 @@ public final class BrowserMedia {
     private static let rescanInterval: TimeInterval = 12
     @ObservationIgnored private var cached: BrowserBridge.TabRef?
 
+    /// The tab the playing video is in, for the live view to find it.
+    var playingTab: BrowserBridge.TabRef? { cached }
+
     /// Back off hard when there is nothing to watch. A rescan walks every tab,
     /// and "no media tab is open" is the overwhelmingly common case.
     private var interval: TimeInterval {
@@ -662,6 +665,40 @@ enum BrowserBridge {
         }
     }
 
+    /// Where the playing video's picture is on screen, in points from the top
+    /// left of the main display, or nil when it cannot be told.
+    ///
+    /// The page reports the element's box, the size of the video inside it
+    /// and where its window is; the toolbar is whatever the window has above
+    /// the page. The box is then shrunk to the picture itself, since a video
+    /// is drawn letterboxed inside an element of another shape.
+    static func videoRect(_ tab: TabRef) async -> (rect: CGRect, title: String)? {
+        await offMain {
+            guard isRunning(tab.browser),
+                  case .value(let descriptor) = run(javascript: Script.rect, in: tab, browser: tab.browser),
+                  let text = descriptor.stringValue, !text.isEmpty,
+                  let raw = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
+                  case let object = raw.compactMapValues({ $0 as? Double }),
+                  let x = object["x"], let y = object["y"], let w = object["w"], let h = object["h"],
+                  let sx = object["sx"], let sy = object["sy"], let ow = object["ow"], let oh = object["oh"],
+                  let iw = object["iw"], let ih = object["ih"], w > 4, h > 4
+            else { return nil }
+            // Whatever the window has beside the page is taken to be on the
+            // left: a tab sidebar, which Helium, Dia, Arc and Brave put there.
+            // ponytail: a side panel docked on the right shifts the crop by
+            // its width; ask the Accessibility tree for the web area if that
+            // ever matters.
+            var box = CGRect(x: sx + (ow - iw) + x, y: sy + (oh - ih) + y, width: w, height: h)
+            if let vw = object["vw"], let vh = object["vh"], vw > 0, vh > 0 {
+                let scale = min(w / vw, h / vh)
+                let picture = CGSize(width: vw * scale, height: vh * scale)
+                box = CGRect(x: box.midX - picture.width / 2, y: box.midY - picture.height / 2,
+                             width: picture.width, height: picture.height)
+            }
+            return (box.integral, raw["title"] as? String ?? "")
+        }
+    }
+
     /// Raises the Automation consent dialog by actually sending an event.
     ///
     /// Not `AEDeterminePermissionToAutomateTarget(…, askUserIfNeeded: true)`:
@@ -898,6 +935,16 @@ private enum Script {
     x.drawImage(v,0,0,c.width,c.height);var d=x.getImageData(0,0,c.width,c.height).data,s=0,k=0;\
     for(var j=0;j<d.length;j+=400){s+=d[j]+d[j+1]+d[j+2];k++}\
     if(s/k<30)return '';return c.toDataURL('image/jpeg',0.8)}catch(e){return ''}})()
+    """
+
+    /// The playing element's box in the page, its video's own size, and the
+    /// window's position and outer and inner sizes. Single quotes only: the
+    /// script travels inside an AppleScript string.
+    static let rect = """
+    (function(){\(finder)if(!o.length)return '';var v=o[0],r=v.getBoundingClientRect();\
+    return JSON.stringify({title:document.title,x:r.left,y:r.top,w:r.width,h:r.height,vw:v.videoWidth||0,\
+    vh:v.videoHeight||0,sx:window.screenX,sy:window.screenY,ow:window.outerWidth,\
+    oh:window.outerHeight,iw:window.innerWidth,ih:window.innerHeight})})()
     """
 
     static let toggle = """

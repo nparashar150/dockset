@@ -160,7 +160,7 @@ final class WidgetDetailWindow {
     /// show.
     @discardableResult
     private func place(_ instance: WidgetInstance, context: WidgetContext,
-                       anchor: CGPoint, edge: DockPosition) -> Bool {
+                       anchor: CGPoint, edge: DockPosition, rebuilt: Bool = false) -> Bool {
         let panel = existingOrNew()
         shown = (context, edge, 0, nil)
         hosting?.rootView = WidgetDetailChrome(
@@ -226,6 +226,16 @@ final class WidgetDetailWindow {
         }
         panel.alphaValue = 1
         panel.orderFrontRegardless()
+        // Join-all-Spaces is set on the window and macOS can still pin it to
+        // one: logged, a panel opened on another Space came up visible but
+        // not on the active Space, so the click showed nothing there. A new
+        // window always lands where the person is, so a pinned one is
+        // thrown away and the panel is placed again in a fresh one.
+        if !panel.isOnActiveSpace, !rebuilt {
+            panelLog.notice("panel pinned to another Space, rebuilding")
+            discardPanel()
+            return place(instance, context: context, anchor: anchor, edge: edge, rebuilt: true)
+        }
         panelLog.notice("""
             placed \(instance.kind.rawValue, privacy: .public) frame=\(panel.frame.debugDescription, privacy: .public) \
             visible=\(panel.isVisible) activeSpace=\(panel.isOnActiveSpace) \
@@ -256,6 +266,14 @@ final class WidgetDetailWindow {
             x: min(max(origin.x, visible.minX + 8), max(visible.minX, visible.maxX - size.width - 8)),
             y: min(max(origin.y, visible.minY + 8), max(visible.minY, visible.maxY - size.height - 8))
         )
+    }
+
+    private func discardPanel() {
+        // Ordered out and let go rather than closed: a closed panel can be
+        // released by AppKit while this still holds it.
+        panel?.orderOut(nil)
+        panel = nil
+        hosting = nil
     }
 
     private func existingOrNew() -> NSPanel {
