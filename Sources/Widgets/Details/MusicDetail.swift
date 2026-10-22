@@ -79,6 +79,18 @@ struct MusicDetail: View {
             }
         }
         .frame(maxWidth: .infinity)
+        // Live video runs only while this panel is the one open: the window
+        // is hidden rather than torn down between openings, so it is checked
+        // rather than left to a disappearance that may not come.
+        .task {
+            guard !context.isPreview else { return }
+            while !Task.isCancelled {
+                if mirror.isOn, WidgetDetailWindow.shared.openWidgetID != instance.id { mirror.stop() }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+        }
+        // A different video, or none, is not what was being watched.
+        .onChange(of: playing?.title) { _, _ in if mirror.isOn { mirror.stop() } }
     }
 
     /// Everything on the card is on a picture or on the source's colour, both
@@ -98,11 +110,93 @@ struct MusicDetail: View {
     /// The artwork as the card, in both appearances: the picture is what
     /// the panel is for, and a light version either washed it out or shrank
     /// it to a thumbnail.
+    private var mirror: VideoMirror { VideoMirror.shared }
+
+    /// Video in a browser can be watched live in the card. See `VideoMirror`.
+    private func toggleLive() {
+        guard !context.isPreview else { return }
+        if mirror.isOn {
+            mirror.stop()
+        } else if let tab = BrowserMedia.shared.playingTab {
+            mirror.start(tab)
+        }
+    }
+
+    private func liveButton(_ live: Bool) -> some View {
+        Button(action: toggleLive) {
+            HStack(spacing: 4) {
+                if live {
+                    Circle().fill(Color.red).frame(width: 6, height: 6)
+                }
+                Text(live ? "Live" : "Watch")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(ink)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(.black.opacity(0.35)))
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(live ? "Back to the artwork" : "Watch the video here, live")
+    }
+
+    /// Said over the picture while it starts or when it cannot.
+    @ViewBuilder
+    private var liveStatus: some View {
+        switch mirror.state {
+        case .starting:
+            ProgressView().controlSize(.small).tint(.white)
+        case .denied:
+            statusLine("Allow Screen Recording for Docket to watch here.") {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+            }
+        case .unavailable(let reason):
+            statusLine(reason, action: nil)
+        case .off, .live:
+            EmptyView()
+        }
+    }
+
+    private func statusLine(_ text: String, action: (() -> Void)?) -> some View {
+        VStack(spacing: 8) {
+            Text(text)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(ink)
+                .multilineTextAlignment(.center)
+            if let action {
+                Button("Open Settings", action: action)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(ink)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(.white.opacity(0.18)))
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black.opacity(0.4))
+    }
+
     private func card(_ track: Playing) -> some View {
         let icon = track.icon ?? AppCatalog.shared.icon(forBundleID: track.sourceBundleID)
+        let live = track.isBrowser && mirror.isOn
         return ZStack {
-            backdrop(track.artwork, tint: track.tint)
+            Group {
+                if live {
+                    VideoMirrorView()
+                        .overlay { liveStatus }
+                } else {
+                    backdrop(track.artwork, tint: track.tint)
+                }
+            }
+            // Clicking the picture is how the video is asked for, and how it
+            // is put away again.
+            .contentShape(Rectangle())
+            .onTapGesture { if track.isBrowser { toggleLive() } }
             scrim
+                .allowsHitTesting(false)
             VStack(spacing: 0) {
                 HStack {
                     if let icon {
@@ -116,6 +210,7 @@ struct MusicDetail: View {
                             .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
                     }
                     Spacer()
+                    if track.isBrowser { liveButton(live) }
                 }
                 Spacer(minLength: 8)
                 transport(track)
