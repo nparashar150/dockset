@@ -699,24 +699,6 @@ enum BrowserBridge {
         }
     }
 
-    /// Brings the tab forward: its window to the front, which switches to the
-    /// desktop it is on, and the tab to the top of that window.
-    static func reveal(_ tab: TabRef) async {
-        await offMain {
-            let id = tab.browser.bundleID
-            let select = tab.browser.isSafari
-                ? "set current tab of window \(tab.window) to tab \(tab.tab) of window \(tab.window)"
-                : "set active tab index of window \(tab.window) to \(tab.tab)"
-            _ = script("""
-            tell application id "\(id)"
-                \(select)
-                set index of window \(tab.window) to 1
-                activate
-            end tell
-            """)
-        }
-    }
-
     /// Raises the Automation consent dialog by actually sending an event.
     ///
     /// Not `AEDeterminePermissionToAutomateTarget(…, askUserIfNeeded: true)`:

@@ -53,6 +53,29 @@ final class VideoMirror {
 
     var isOn: Bool { state != .off }
 
+    var isUnavailable: Bool {
+        if case .unavailable = state { return true }
+        return false
+    }
+
+    /// Whether a window of `browser` showing `title` is on the desktop in
+    /// view. macOS draws only that desktop, so this is when there is video
+    /// to show at all. Read from the window list, which costs no permission
+    /// for owners and on-screen state; titles need Screen Recording, and
+    /// without them any on-screen window of the browser counts.
+    nonisolated static func isOnScreen(bundleID: String, title: String) -> Bool {
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first,
+              let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements],
+                                                    kCGNullWindowID) as? [[String: Any]] else { return false }
+        let key = String(title.prefix(30))
+        return list.contains { window in
+            guard (window[kCGWindowOwnerPID as String] as? pid_t) == app.processIdentifier,
+                  (window[kCGWindowLayer as String] as? Int) == 0 else { return false }
+            guard let name = window[kCGWindowName as String] as? String, !name.isEmpty else { return true }
+            return key.isEmpty || name.contains(key)
+        }
+    }
+
     func start(_ tab: BrowserBridge.TabRef) {
         guard !isOn else { return }
         state = .starting

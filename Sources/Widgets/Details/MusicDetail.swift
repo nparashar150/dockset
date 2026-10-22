@@ -86,6 +86,14 @@ struct MusicDetail: View {
             guard !context.isPreview else { return }
             while !Task.isCancelled {
                 if mirror.isOn, WidgetDetailWindow.shared.openWidgetID != instance.id { mirror.stop() }
+                // Watch is offered only when the video is on this desktop,
+                // and leaving it goes quietly back to the artwork.
+                if let track = playing, track.isBrowser {
+                    videoInView = VideoMirror.isOnScreen(bundleID: track.sourceBundleID, title: track.title)
+                } else {
+                    videoInView = false
+                }
+                if mirror.isOn, !videoInView || mirror.state == .elsewhere { mirror.stop() }
                 try? await Task.sleep(for: .milliseconds(500))
             }
         }
@@ -111,6 +119,9 @@ struct MusicDetail: View {
     /// the panel is for, and a light version either washed it out or shrank
     /// it to a thumbnail.
     private var mirror: VideoMirror { VideoMirror.shared }
+
+    /// Whether the playing video's window is on the desktop in view.
+    @State private var videoInView = false
 
     /// Video in a browser can be watched live in the card. See `VideoMirror`.
     private func toggleLive() {
@@ -149,17 +160,13 @@ struct MusicDetail: View {
     @ViewBuilder
     private var liveStatus: some View {
         switch mirror.state {
-        case .elsewhere:
-            statusPill("On another desktop", button: "Go there") {
-                if let tab = BrowserMedia.shared.playingTab { Task { await BrowserBridge.reveal(tab) } }
-            }
         case .denied:
             statusPill("Needs Screen Recording", button: "Settings") {
                 NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
             }
         case .unavailable(let reason):
             statusPill(reason, button: nil, action: nil)
-        case .off, .starting, .live:
+        case .off, .starting, .live, .elsewhere:
             EmptyView()
         }
     }
@@ -223,9 +230,9 @@ struct MusicDetail: View {
                             .shadow(color: .black.opacity(0.35), radius: 3, y: 1)
                     }
                     Spacer()
-                    if track.isBrowser { liveButton(on: live, showing: showing) }
+                    if track.isBrowser, videoInView || live { liveButton(on: live, showing: showing) }
                 }
-                if live { liveStatus.padding(.top, 8) }
+                if live, mirror.state == .denied || mirror.isUnavailable { liveStatus.padding(.top, 8) }
                 Spacer(minLength: 8)
                 transport(track)
                 Spacer(minLength: 8)
