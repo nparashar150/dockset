@@ -3,6 +3,19 @@
 The 0.1.0 entry was written by hand. Everything after it is generated from the
 commits on `main`, which is why the voice changes partway down.
 
+## [0.1.11](https://github.com/nparashar150/dockset/compare/v0.1.10...v0.1.11) (2026-10-23)
+
+
+### Features
+
+* watch a browser video live in the Now Playing panel ([#154](https://github.com/nparashar150/dockset/issues/154)) ([d095a12](https://github.com/nparashar150/dockset/commit/d095a12155d7f1f02e2f8ae539ab214ed97b7621))
+
+
+### Bug Fixes
+
+* a long sticky note scrolls on its sheet and saves as you type ([#155](https://github.com/nparashar150/dockset/issues/155)) ([4beb144](https://github.com/nparashar150/dockset/commit/4beb1448262ce9c22fac4f3aec7c432d49f61701))
+* panels never open invisible, and agents read as what they are doing ([#152](https://github.com/nparashar150/dockset/issues/152)) ([348f61d](https://github.com/nparashar150/dockset/commit/348f61df92feaa0231aef050b8a1aac39ac8dfeb))
+
 ## [0.1.10](https://github.com/nparashar150/dockset/compare/v0.1.9...v0.1.10) (2026-10-17)
 
 
