@@ -54,7 +54,7 @@ struct StickyNoteDetail: View {
             TextField("", text: $draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .focused($writing)
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: Self.fontSize(for: draft), weight: .semibold))
                 .foregroundStyle(ink)
                 .lineSpacing(4)
                 .onSubmit {
@@ -62,6 +62,15 @@ struct StickyNoteDetail: View {
                     writing = false
                 }
                 .onChange(of: writing) { _, active in if !active { commit() } }
+                // Saved a moment after typing stops, not only when focus
+                // leaves: a pasted note stayed off the tile until the panel
+                // was clicked out of. Each save is a profile write, so a
+                // pause rather than every keystroke.
+                .task(id: draft) {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    guard !Task.isCancelled else { return }
+                    commit()
+                }
                 // One panel serves every note in turn, so reopening it hands
                 // this view a different widget; take that note's words unless
                 // the caret is still mid-sentence in the last one.
@@ -89,6 +98,21 @@ struct StickyNoteDetail: View {
                         .contentShape(.rect)
                         .onTapGesture { beginWriting() }
                 }
+                // The sheet keeps the card's height and a long note scrolls
+                // on it. The field grew with every line instead, past the
+                // window, which is sized once as it opens, and the panel lost
+                // its outline to the overflow.
+                .scrollable(height: DetailCard<EmptyView, EmptyView>.height - 32)
+        }
+    }
+
+    /// Large while a note is a few words, smaller as it becomes a paragraph,
+    /// so a pasted page is still a page and not three words a line.
+    static func fontSize(for text: String) -> CGFloat {
+        switch text.count {
+        case ..<80: 20
+        case ..<240: 16
+        default: 13
         }
     }
 
@@ -106,5 +130,13 @@ struct StickyNoteDetail: View {
         WidgetWriter.write(instance) { config in
             config.set("text", .string(draft))
         }
+    }
+}
+
+private extension View {
+    func scrollable(height: CGFloat) -> some View {
+        ScrollView(.vertical) { self }
+            .scrollIndicators(.automatic)
+            .frame(height: height)
     }
 }
